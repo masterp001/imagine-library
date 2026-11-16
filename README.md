@@ -41,6 +41,15 @@ favorites, ratings, notes and collections.
 - **Smart groups** are computed on-device from prompt keywords.
 - Everything is stored locally (IndexedDB). Nothing is uploaded.
 
+## Official xAI export
+The account export from grok.com (Settings → Data → *Download your data*, file
+`prod-grok-backend.json`) is imported directly: every entry of `media_posts`
+becomes an item. The post id is the asset id, so files are fetched from
+`assets.grok.com/users/<user_id>/generated/<id>/image.jpg` and
+`…/generated_video_hd.mp4` (falls back to `generated_video.mp4`, `original_image.jpg`).
+That export has no aspect ratio, so tiles start square and get their real size
+once the file is downloaded.
+
 ## Offline & downloads
 **Offline** tab → *Download all*. Every image and video is copied onto the device; the app
 then works with no connection at all.
@@ -50,6 +59,7 @@ then works with no connection at all.
   the file. Optional **grok.com cookie** (Offline → cookie) if Grok answers 401/403.
 - **Browser/PWA:** stored in Cache Storage and served by the service worker from
   `./offline/…` — only works if assets.grok.com allows CORS.
+- Videos: HD / SD / off (off keeps them online-only to save space).
 - Automatic after each import and on app start (toggle), Wi-Fi-only mode, 1–6 parallel
   downloads, pause / resume / stop, retry failed, per-file progress.
 - **Per collection:** download for offline, or **Save to phone** → copies the files to

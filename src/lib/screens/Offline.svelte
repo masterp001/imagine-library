@@ -202,6 +202,23 @@
         />
         <div class="flex items-center gap-4 px-4 py-3">
           <span class="flex flex-1 flex-col gap-0.5">
+            <span class="text-[15px]">Videos</span>
+            <span class="text-[13px] text-outline">{offline.settings.videos === 'off' ? 'Stay online-only, saves most space' : offline.settings.videos === 'hd' ? 'HD where available, else SD' : 'SD, smaller files'}</span>
+          </span>
+          <div class="flex overflow-hidden rounded-[18px] border border-outline">
+            {#each [['hd', 'HD'], ['sd', 'SD'], ['off', 'Off']] as [v, l] (v)}
+              <button
+                type="button"
+                onclick={() => ((offline.settings.videos = v as 'hd' | 'sd' | 'off'), offline.saveSettings())}
+                class="h-9 w-11 border-0 text-sm font-medium"
+                style:background={offline.settings.videos === v ? 'var(--color-secondary-container)' : 'transparent'}
+                style:color={offline.settings.videos === v ? 'var(--color-on-secondary-container)' : 'var(--color-on-variant)'}
+              >{l}</button>
+            {/each}
+          </div>
+        </div>
+        <div class="flex items-center gap-4 px-4 py-3">
+          <span class="flex flex-1 flex-col gap-0.5">
             <span class="text-[15px]">Parallel downloads</span>
             <span class="text-[13px] text-outline">More is faster, fewer is gentler</span>
           </span>

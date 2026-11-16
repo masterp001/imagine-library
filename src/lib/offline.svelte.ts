@@ -32,6 +32,8 @@ export interface OfflineSettings {
   parallel: number;
   /** Optional Cookie header for assets.grok.com (Android app only). */
   cookie: string;
+  /** Video quality to download; 'off' keeps videos online-only. */
+  videos: 'hd' | 'sd' | 'off';
 }
 
 interface Persisted {
@@ -53,6 +55,25 @@ function extOf(item: Item): string {
   if (m) return m[1].toLowerCase().replace('jpeg', 'jpg').replace('m4v', 'mp4');
   return item.kind === 'video' ? 'mp4' : 'jpg';
 }
+
+/** Alternative file names Grok uses for the same asset. */
+function candidates(url: string, videos: OfflineSettings['videos'] = 'hd'): string[] {
+  const out: string[] = [];
+  const m = url.match(/^(.*\/)generated_video(_hd)?\.mp4(\?[^#]*)?$/);
+  if (m) {
+    const hd = m[1] + 'generated_video_hd.mp4', sd = m[1] + 'generated_video.mp4';
+    out.push(...(videos === 'sd' ? [sd, hd] : [hd, sd]));
+    return out;
+  }
+  out.push(url);
+  if (/\/image\.jpg(\?|$)/.test(url)) out.push(url.replace(/image\.jpg(\?[^#]*)?$/, 'original_image.jpg'));
+  return out;
+}
+
+const httpStatus = (e: unknown): number | undefined => {
+  const o = (e ?? {}) as { httpStatus?: number; data?: { httpStatus?: number } };
+  return o.httpStatus ?? o.data?.httpStatus;
+};
 
 function slug(s: string, n = 48): string {
   return (
@@ -161,7 +182,7 @@ class Offline {
 
   // ---- persisted ----
   files = $state<Record<string, LocalFile>>({});
-  settings = $state<OfflineSettings>({ auto: true, wifiOnly: false, parallel: 3, cookie: '' });
+  settings = $state<OfflineSettings>({ auto: true, wifiOnly: false, parallel: 3, cookie: '', videos: 'hd' });
   ready = $state(false);
 
   // ---- run state ----
@@ -234,7 +255,7 @@ class Offline {
 
   /** Items that can be downloaded (have a media URL). */
   eligible(items: Item[] = app.items): Item[] {
-    return items.filter((i) => !!i.mediaUrl);
+    return items.filter((i) => !!i.mediaUrl && (i.kind !== 'video' || this.settings.videos !== 'off'));
   }
 
   missing(items: Item[] = app.items): Item[] {
@@ -246,8 +267,8 @@ class Offline {
   async start(ids?: string[]) {
     await this.init();
     const queued = new Set(this.#queue);
-    const want = (ids ? ids.map((id) => app.byId.get(id)).filter((i): i is Item => !!i) : app.items)
-      .filter((i) => i.mediaUrl && !this.files[i.id] && !queued.has(i.id) && !this.active[i.id])
+    const want = this.eligible(ids ? ids.map((id) => app.byId.get(id)).filter((i): i is Item => !!i) : app.items)
+      .filter((i) => !this.files[i.id] && !queued.has(i.id) && !this.active[i.id])
       .map((i) => i.id);
     for (const id of want) delete this.errors[id];
     if (!this.running) {
@@ -375,11 +396,19 @@ class Offline {
     const D = Directory.Data;
     const part = `media/${item.id}.part`;
     const { uri } = await Filesystem.getUri({ path: part, directory: D });
-    this.#urlToId.set(item.mediaUrl!, item.id);
-    try {
-      await FileTransfer.downloadFile({ url: item.mediaUrl!, path: uri, progress: true, headers: this.#headers(), connectTimeout: 20_000, readTimeout: 90_000 });
-    } finally {
-      this.#urlToId.delete(item.mediaUrl!);
+    const urls = candidates(item.mediaUrl!, this.settings.videos);
+    for (let i = 0; i < urls.length; i++) {
+      this.#urlToId.set(urls[i], item.id);
+      try {
+        await FileTransfer.downloadFile({ url: urls[i], path: uri, progress: true, headers: this.#headers(), connectTimeout: 20_000, readTimeout: 90_000 });
+        break;
+      } catch (e) {
+        // Only a "not there" answer is worth trying the next file name.
+        const st = httpStatus(e);
+        if (!st || st < 400 || st >= 500 || st === 401 || i === urls.length - 1) throw e;
+      } finally {
+        this.#urlToId.delete(urls[i]);
+      }
     }
     try {
       const st = await Filesystem.stat({ path: part, directory: D });
@@ -406,7 +435,11 @@ class Offline {
   }
 
   async #fetchWeb(item: Item, rel: string, ext: string) {
-    const res = await fetch(item.mediaUrl!, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
+    let res!: Response;
+    for (const url of candidates(item.mediaUrl!, this.settings.videos)) {
+      res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
+      if (res.ok || res.status === 401 || res.status >= 500) break;
+    }
     if (!res.ok) throw { httpStatus: res.status };
     if ((res.headers.get('content-type') ?? '').includes('text/html')) throw new Error('Got a web page instead of media (login needed?)');
     const raw = await res.blob();

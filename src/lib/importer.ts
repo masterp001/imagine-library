@@ -157,8 +157,52 @@ function merge(a: ParsedAsset, b: ParsedAsset): ParsedAsset {
   return out as unknown as ParsedAsset;
 }
 
+/**
+ * Official xAI account export (grok.com → Settings → Data → Download):
+ * `{ conversations, projects, tasks, media_posts }`. Each media post has
+ * id, user_id, original_prompt, media_type ('image' | 'video'), create_time
+ * and a link to grok.com/imagine/post/<id>. The post id is also the asset id,
+ * so the file lives at assets.grok.com/users/<user_id>/generated/<id>/….
+ */
+function fromMediaPosts(posts: unknown[]): ParsedAsset[] {
+  const out: ParsedAsset[] = [];
+  for (const m of posts) {
+    if (!isObj(m)) continue;
+    const id = str(m.id);
+    const uid = str(m.user_id) ?? str(m.userId);
+    if (!id) continue;
+    const video = /video/i.test(String(m.media_type ?? m.mediaType ?? ''));
+    const dir = uid ? `${ASSET_HOST}users/${uid}/generated/${id}/` : null;
+    out.push({
+      id,
+      kind: video ? 'video' : 'image',
+      prompt: str(m.original_prompt) ?? str(m.prompt) ?? '',
+      w: 1,
+      h: 1,
+      createdAt: toTime(m.create_time ?? m.createTime),
+      model: video ? 'imagine-video' : 'imagine-image',
+      mode: null,
+      seed: null,
+      parent: null,
+      conversation: null,
+      dur: null,
+      // HD first; the downloader falls back to generated_video.mp4 / original_image.jpg.
+      mediaUrl: dir ? dir + (video ? 'generated_video_hd.mp4' : 'image.jpg') : null,
+      thumbUrl: dir && video ? dir + 'preview_image.jpg' : null,
+      thumbhash: null,
+      rRated: false
+    });
+  }
+  return out;
+}
+
 export function parseExport(json: unknown): ParsedAsset[] {
   const found = new Map<string, ParsedAsset>();
+  if (isObj(json) && Array.isArray(json.media_posts)) {
+    for (const a of fromMediaPosts(json.media_posts)) found.set(a.id, a);
+    // The chat part of that export has no Imagine metadata worth walking.
+    if (found.size) return [...found.values()];
+  }
   const seen = new WeakSet<object>();
 
   const walk = (node: unknown, ctx: Ctx, depth: number) => {
