@@ -1,6 +1,7 @@
 // Minimal offline cache: app shell is network-first, hashed assets cache-first.
-// Grok media (other origins) is left to the browser's normal HTTP cache.
-const CACHE = 'imagine-library-v1';
+// Downloaded Grok media lives in a separate cache and is served from ./offline/….
+const CACHE = 'imagine-library-v2';
+const MEDIA = 'imagine-offline-v1';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png'])));
@@ -9,7 +10,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('imagine-library-') && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
   );
 });
 
@@ -17,6 +18,13 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  if (url.pathname.includes('/offline/')) {
+    e.respondWith(
+      caches.open(MEDIA).then((c) => c.match(url.href, { ignoreSearch: true })).then((hit) => hit || new Response('Not downloaded', { status: 404 }))
+    );
+    return;
+  }
 
   if (req.mode === 'navigate') {
     e.respondWith(

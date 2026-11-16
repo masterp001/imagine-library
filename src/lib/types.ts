@@ -73,6 +73,6 @@ export interface SmartGroup {
   ids: string[];
 }
 
-export type Screen = 'library' | 'detail' | 'search' | 'collections' | 'collection' | 'sync';
+export type Screen = 'library' | 'detail' | 'search' | 'collections' | 'collection' | 'offline' | 'sync';
 export type Filter = 'all' | 'images' | 'videos' | 'favorites' | 'chains';
 export type Scope = 'all' | 'prompt' | 'notes' | 'meta';

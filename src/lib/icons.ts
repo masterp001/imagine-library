@@ -39,6 +39,17 @@ export const ICONS = {
   sync: 0xe627,
   upload_file: 0xe9fc,
   science: 0xea4b,
+  download_for_offline: 0xf000,
+  offline_pin: 0xe90a,
+  pause: 0xe034,
+  cloud_off: 0xe2c1,
+  refresh: 0xe5d5,
+  download_2: 0xf523,
+  error: 0xe000,
+  cookie: 0xeaac,
+  wifi: 0xe63e,
+  stop: 0xe047,
+  folder: 0xe2c7,
 } as const;
 
 export type IconName = keyof typeof ICONS;

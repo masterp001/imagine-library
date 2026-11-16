@@ -74,7 +74,7 @@ function toRatio(v: unknown, o: Obj): [number, number] {
   return [1, 1];
 }
 
-function reduce(a: number, b: number): [number, number] {
+export function reduce(a: number, b: number): [number, number] {
   const g = (x: number, y: number): number => (y ? g(y, x % y) : x);
   const d = g(a, b) || 1;
   let w = a / d, h = b / d;

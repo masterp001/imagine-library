@@ -10,12 +10,16 @@
   import CollectionView from './lib/screens/CollectionView.svelte';
   import Detail from './lib/screens/Detail.svelte';
   import Library from './lib/screens/Library.svelte';
+  import Offline from './lib/screens/Offline.svelte';
+  import { offline } from './lib/offline.svelte';
   import Search from './lib/screens/Search.svelte';
   import Sync from './lib/screens/Sync.svelte';
   import type { Screen } from './lib/types';
 
-  onMount(() => {
-    app.init();
+  onMount(async () => {
+    await app.init();
+    await offline.init();
+    if (offline.settings.auto) offline.start();
   });
 
   // Persist any change (debounced inside scheduleSave).
@@ -27,11 +31,12 @@
     ['library', 'Library', 'photo_library'],
     ['search', 'Search', 'search'],
     ['collections', 'Collections', 'collections_bookmark'],
+    ['offline', 'Offline', 'download_for_offline'],
     ['sync', 'Import', 'sync']
   ];
 
   const selectBar = $derived(app.selecting && app.screen === 'library');
-  const showNav = $derived(!selectBar && ['library', 'search', 'collections', 'sync'].includes(app.screen));
+  const showNav = $derived(!selectBar && ['library', 'search', 'collections', 'offline', 'sync'].includes(app.screen));
   const sel = $derived(app.selected);
 
   function groupSelection() {
@@ -59,8 +64,16 @@
       }
     },
     {
+      icon: 'download_2',
+      label: 'Save',
+      run: () => {
+        if (!sel.length) return app.say('Select items first');
+        offline.exportItems([...sel], 'Selection');
+      }
+    },
+    {
       icon: 'link',
-      label: 'Copy links',
+      label: 'Links',
       run: () => {
         if (!sel.length) return app.say('Select items first');
         app.copy(sel.map((id) => app.byId.get(id)?.grokUrl).filter(Boolean).join('\n'), `${sel.length} Grok links copied`);
@@ -88,6 +101,7 @@
     app.back();
     pasteText = '';
     await app.importText(t, 'Pasted text');
+    if (offline.settings.auto) offline.start();
   }
 
   const toastBottom = $derived(app.screen === 'detail' || app.screen === 'collection' ? 32 : 116);
@@ -106,6 +120,8 @@
     <Collections />
   {:else if app.screen === 'collection'}
     <CollectionView />
+  {:else if app.screen === 'offline'}
+    <Offline />
   {:else if app.screen === 'sync'}
     <Sync />
   {/if}
@@ -122,10 +138,13 @@
           style:color={on ? 'var(--color-on-surface)' : 'var(--color-on-variant)'}
         >
           <span
-            class="state-layer flex h-8 w-16 items-center justify-center rounded-2xl transition-colors duration-150"
+            class="state-layer relative flex h-8 w-16 items-center justify-center rounded-2xl transition-colors duration-150"
             style:background={on ? 'var(--color-primary-container)' : 'transparent'}
           >
             <Icon name={ic} size={24} fill={on} />
+            {#if k === 'offline' && offline.running && !offline.paused}
+              <span class="absolute top-0.5 right-3.5 h-2 w-2 rounded-full bg-primary animate-pulse"></span>
+            {/if}
           </span>
           <span class="text-xs" style:font-weight={on ? 600 : 500}>{l}</span>
         </button>

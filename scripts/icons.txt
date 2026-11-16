@@ -37,3 +37,14 @@ star
 sync
 upload_file
 science
+download_for_offline
+offline_pin
+pause
+cloud_off
+refresh
+download_2
+error
+cookie
+wifi
+stop
+folder

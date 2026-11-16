@@ -6,6 +6,7 @@
   import Media from '../components/Media.svelte';
   import TileGrid from '../components/TileGrid.svelte';
   import { ago, dayKey, dayLabel, EMPTY_STRIPE, num } from '../format';
+  import { offline } from '../offline.svelte';
   import type { Filter, Item } from '../types';
 
   const FILTERS: [Filter, string][] = [['all', 'All'], ['images', 'Images'], ['videos', 'Videos'], ['favorites', 'Favorites'], ['chains', 'Chains']];
@@ -79,7 +80,7 @@
       <div class="flex flex-col gap-0.5">
         <h1 class="m-0 text-[30px] font-semibold tracking-[-0.02em]">Library</h1>
         <div class="text-[13px] text-on-variant">
-          {num(app.visible.length)} generations · {app.demo ? 'demo library' : `imported ${ago(app.lastImport)}`}
+          {num(app.visible.length)} generations · {app.demo ? 'demo library' : offline.count ? `${num(offline.count)} offline` : `imported ${ago(app.lastImport)}`}
         </div>
       </div>
       <div class="flex">

@@ -3,6 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Toggle from '../components/Toggle.svelte';
   import { ago, dateTime, num } from '../format';
+  import { offline } from '../offline.svelte';
 
   let fileInput = $state<HTMLInputElement>();
   let confirmClear = $state(false);
@@ -15,6 +16,7 @@
     try {
       const text = await f.text();
       await app.importText(text, f.name);
+      if (offline.settings.auto) offline.start();
     } catch {
       app.say('Could not read that file');
     }
@@ -28,7 +30,7 @@
       return;
     }
     confirmClear = false;
-    app.clearLibrary();
+    offline.removeAll().then(() => app.clearLibrary());
   }
 
   const steps = [
@@ -104,7 +106,7 @@
           </button>
         </div>
         <div class="text-xs leading-normal text-pretty text-outline">
-          Your library is stored only on this device. Images are loaded straight from assets.grok.com; nothing is uploaded anywhere.
+          Your library is stored only on this device. Media is downloaded from assets.grok.com into the app (see Offline); nothing is uploaded anywhere.
         </div>
       </div>
     </div>
@@ -112,7 +114,7 @@
     <div class="flex flex-col gap-1">
       <span class="px-1 pb-1.5 text-sm font-medium text-on-variant">Display</span>
       <div class="rounded-3xl bg-surface-1 py-1">
-        <Toggle label="Load media from Grok" sub="Off shows placeholders only, saves data" on={app.settings.loadMedia} onchange={(v) => (app.settings.loadMedia = v)} />
+        <Toggle label="Stream media from Grok" sub="For items not downloaded yet. Off saves data" on={app.settings.loadMedia} onchange={(v) => (app.settings.loadMedia = v)} />
         <Toggle label="Hide R-rated" sub="Otherwise shown blurred in the grid" on={app.settings.hideRRated} onchange={(v) => (app.settings.hideRRated = v)} />
         <Toggle label="Smart groups strip" sub="Show groups above the library" on={app.settings.showSmartStrip} onchange={(v) => (app.settings.showSmartStrip = v)} />
       </div>

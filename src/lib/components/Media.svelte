@@ -1,12 +1,14 @@
 <script lang="ts">
   import { app } from '../app.svelte';
   import { stripe } from '../format';
+  import { offline } from '../offline.svelte';
   import { thumbUrl } from '../thumbhash';
   import type { Item } from '../types';
 
   /**
    * Shows the real asset when possible, layered over the thumbhash placeholder,
    * falling back to the striped placeholder from the design.
+   * Offline copies on the device win over network URLs.
    * `full` = detail view (video gets controls, image loads full size).
    */
   let { item, full = false, radius = 0 }: { item: Item; full?: boolean; radius?: number } = $props();
@@ -15,15 +17,28 @@
   let loaded = $state(false);
   const hash = $derived(thumbUrl(item.thumbhash));
   const bg = $derived(hash ? `center / cover no-repeat url("${hash}")` : stripe(item.hue));
+
+  const local = $derived(offline.files[item.id] ? { file: offline.src(item, true), thumb: offline.files[item.id].thumb ? offline.src(item, false) : null } : null);
+  const net = $derived(app.settings.loadMedia && !failed);
+
   const src = $derived.by(() => {
-    if (!app.settings.loadMedia || failed) return null;
+    if (local && !failed) {
+      if (item.kind === 'image') return full ? local.file : (local.thumb ?? local.file);
+      return full ? null : local.thumb;
+    }
+    if (!net) return null;
     if (item.kind === 'image') return full ? (item.mediaUrl ?? item.thumbUrl) : (item.thumbUrl ?? item.mediaUrl);
     return item.thumbUrl;
   });
-  const videoSrc = $derived(app.settings.loadMedia && !failed && item.kind === 'video' && (full || !item.thumbUrl) ? item.mediaUrl : null);
+  const videoSrc = $derived.by(() => {
+    if (item.kind !== 'video' || failed) return null;
+    if (local) return full || !local.thumb ? local.file : null;
+    return net && (full || !item.thumbUrl) ? item.mediaUrl : null;
+  });
 
   $effect(() => {
     void item.id;
+    void local?.file;
     failed = false;
     loaded = false;
   });

@@ -33,12 +33,29 @@ Install via USB: `adb install android/app/build/outputs/apk/debug/app-debug.apk`
 differences don't matter; duplicate `assetId`s are merged. Re-importing keeps your
 favorites, ratings, notes and collections.
 
-- Media is loaded from `https://assets.grok.com/<key>`. If those URLs need your grok.com
-  login, tiles fall back to the thumbhash preview.
+- Media comes from `https://assets.grok.com/<key>` and is downloaded onto the phone
+  (see **Offline** below). Items not downloaded yet are streamed, or fall back to the
+  thumbhash preview.
 - Videos in the same conversation as an image become an **image → video chain**; several
   images in one conversation become **Variations**.
 - **Smart groups** are computed on-device from prompt keywords.
 - Everything is stored locally (IndexedDB). Nothing is uploaded.
+
+## Offline & downloads
+**Offline** tab → *Download all*. Every image and video is copied onto the device; the app
+then works with no connection at all.
+- **Android app:** native downloads (no CORS limits) into the app's private storage
+  (`files/media/<id>.<ext>`) plus a 384 px JPEG thumbnail per item (`files/thumbs/`) so the
+  grid stays fast with thousands of items. Real pixel size and video length are read from
+  the file. Optional **grok.com cookie** (Offline → cookie) if Grok answers 401/403.
+- **Browser/PWA:** stored in Cache Storage and served by the service worker from
+  `./offline/…` — only works if assets.grok.com allows CORS.
+- Automatic after each import and on app start (toggle), Wi-Fi-only mode, 1–6 parallel
+  downloads, pause / resume / stop, retry failed, per-file progress.
+- **Per collection:** download for offline, or **Save to phone** → copies the files to
+  `Documents/Imagine Library/<collection>/` (Files app; browser: normal downloads).
+  Also from the detail page and the multi-select bar (*Save*).
+- Downloads pause while Android puts the app in the background; keep it open for big runs.
 
 ## Features
 - Library: masonry ⇄ grid, day sections, filters (Images / Videos / Favorites / Chains),
@@ -56,9 +73,10 @@ favorites, ratings, notes and collections.
 src/App.svelte                 shell: nav bar, bulk bar, sheets, toast
 src/lib/app.svelte.ts          app state (runes), navigation + history, import, persistence
 src/lib/importer.ts            tolerant Grok export parser + merge
+src/lib/offline.svelte.ts      download queue, on-device storage, thumbnails, export
 src/lib/cluster.ts             smart groups (prompt similarity)
 src/lib/search.ts              query parsing, matching, highlight segments
-src/lib/screens/*.svelte       Library, Detail, Search, Collections, CollectionView, Sync (Import)
+src/lib/screens/*.svelte       Library, Detail, Search, Collections, CollectionView, Offline, Sync (Import)
 src/lib/components/*.svelte    Tile, Media, Chip, Toggle, Sheet, Icon…
 scripts/subset-icons.py        rebuilds the 42 KB Material Symbols subset from scripts/icons.txt
 android/                       Capacitor Android project

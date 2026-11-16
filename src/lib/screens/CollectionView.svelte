@@ -3,6 +3,8 @@
   import Icon from '../components/Icon.svelte';
   import IconButton from '../components/IconButton.svelte';
   import TileGrid from '../components/TileGrid.svelte';
+  import { num } from '../format';
+  import { offline } from '../offline.svelte';
   import type { Item } from '../types';
 
   const view = $derived.by(() => {
@@ -16,6 +18,17 @@
     const vids = its.filter((i) => i.kind === 'video').length;
     return { smart: false, name: c?.name ?? 'Collection', kw: [] as string[], its, sub: `${its.length} items · ${vids} video${vids === 1 ? '' : 's'}` };
   });
+
+  const offState = $derived.by(() => {
+    const can = offline.eligible(view.its);
+    return { can: can.length, have: can.filter((i) => offline.files[i.id]).length };
+  });
+
+  async function downloadAll() {
+    if (!offState.can) return app.say('Nothing downloadable in here');
+    const n = await offline.start(view.its.map((i) => i.id));
+    app.say(n ? `Downloading ${n} for offline` : 'Already available offline');
+  }
 
   let editing = $state(false);
   let draft = $state('');
@@ -64,7 +77,14 @@
       onclick={() => (app.settings.layout = app.settings.layout === 'masonry' ? 'grid' : 'masonry')}
     />
     <IconButton
-      icon="share"
+      icon={offState.can && offState.have === offState.can ? 'offline_pin' : 'download_for_offline'}
+      label="Download for offline"
+      color={offState.can && offState.have === offState.can ? 'var(--color-primary)' : 'var(--color-on-surface)'}
+      onclick={downloadAll}
+    />
+    <IconButton icon="download_2" label="Save to phone" color="var(--color-on-surface)" onclick={() => offline.exportItems(view.its.map((i) => i.id), view.name)} />
+    <IconButton
+      icon="link"
       label="Copy all Grok links"
       color="var(--color-on-surface)"
       onclick={() => app.copy(view.its.map((i) => i.grokUrl).join('\n'), `${view.its.length} Grok links copied`)}
@@ -95,7 +115,9 @@
           class:cursor-default={view.smart}
         >{view.name}</button>
       {/if}
-      <div class="text-sm text-on-variant">{view.sub}</div>
+      <div class="text-sm text-on-variant">
+        {view.sub}{#if offState.can} · <span style:color={offState.have === offState.can ? 'var(--color-primary)' : undefined}>{num(offState.have)}/{num(offState.can)} offline</span>{/if}
+      </div>
       {#if view.smart}
         <div class="flex flex-col gap-3 pt-1">
           <div class="flex flex-wrap gap-1.5">

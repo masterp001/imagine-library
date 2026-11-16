@@ -4,6 +4,7 @@
   import IconButton from '../components/IconButton.svelte';
   import Media from '../components/Media.svelte';
   import { dateTime } from '../format';
+  import { fmtBytes, offline } from '../offline.svelte';
   import type { Item } from '../types';
 
   const it = $derived<Item | undefined>(app.byId.get(app.cur) ?? app.items[0]);
@@ -53,7 +54,7 @@
               <Icon name="play_arrow" size={36} fill />
             </span>
           {/if}
-          {#if !it.mediaUrl || !app.settings.loadMedia}
+          {#if !it.mediaUrl || (!app.settings.loadMedia && !offline.files[it.id])}
             <span class="absolute bottom-2.5 left-3 font-mono text-[11px] text-white/75">
               {it.kind} · {it.w}:{it.h}{it.dur ? ' · ' + it.dur : ''}
             </span>
@@ -97,6 +98,29 @@
             <span>Remix in Grok</span>
           </a>
         </div>
+
+        {#if it.mediaUrl}
+          {@const lf = offline.files[it.id]}
+          {@const busy = !!offline.active[it.id]}
+          <div class="flex items-center gap-3 rounded-[20px] bg-surface-1 py-2 pr-2 pl-4">
+            <span style:color={lf ? 'var(--color-primary)' : 'var(--color-outline)'}><Icon name={lf ? 'offline_pin' : 'cloud_off'} size={22} fill={!!lf} /></span>
+            <div class="flex min-w-0 flex-1 flex-col">
+              <span class="text-sm">{lf ? 'Available offline' : busy ? 'Downloading…' : 'Not downloaded'}</span>
+              <span class="truncate text-xs text-outline">
+                {lf ? `${fmtBytes(lf.bytes)} · ${lf.ext.toUpperCase()}` : (offline.errors[it.id] ?? 'Stored on assets.grok.com')}
+              </span>
+            </div>
+            {#if lf}
+              <button type="button" onclick={() => offline.exportItems([it.id], 'Saved')} disabled={offline.exporting} class="flex h-10 items-center gap-1.5 rounded-[20px] border-0 bg-secondary-container px-3.5 text-[13px] font-semibold text-on-secondary-container disabled:opacity-60">
+                <Icon name="download_2" size={18} /><span>Save to phone</span>
+              </button>
+            {:else}
+              <button type="button" disabled={busy} onclick={() => offline.start([it.id])} class="flex h-10 items-center gap-1.5 rounded-[20px] border-0 bg-secondary-container px-3.5 text-[13px] font-semibold text-on-secondary-container disabled:opacity-60">
+                <Icon name="download_for_offline" size={18} /><span>Download</span>
+              </button>
+            {/if}
+          </div>
+        {/if}
 
         <div class="flex items-center justify-between">
           <span class="text-sm text-on-variant">Rating</span>
