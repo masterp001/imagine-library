@@ -1,0 +1,221 @@
+<script lang="ts">
+  import { app } from '../app.svelte';
+  import Icon from '../components/Icon.svelte';
+  import IconButton from '../components/IconButton.svelte';
+  import Media from '../components/Media.svelte';
+  import { dateTime } from '../format';
+  import type { Item } from '../types';
+
+  const it = $derived<Item | undefined>(app.byId.get(app.cur) ?? app.items[0]);
+  const root = $derived(it?.parent ? (app.byId.get(it.parent) ?? it) : it);
+  const chain = $derived(root ? [root, ...app.items.filter((x) => x.parent === root.id).sort((a, b) => a.createdAt - b.createdAt)] : []);
+  const variants = $derived(it?.variant ? app.items.filter((x) => x.variant === it.variant && x.id !== it.id) : []);
+  const itColls = $derived(it ? app.colls.filter((c) => it.colls.includes(c.id)) : []);
+  const grokId = $derived(it ? (it.grokUrl.split('/').pop() ?? it.id) : '');
+
+  let scroller = $state<HTMLDivElement>();
+  $effect(() => {
+    void app.cur;
+    scroller?.scrollTo({ top: 0 });
+  });
+
+  function setCur(id: string) {
+    app.cur = id;
+  }
+</script>
+
+{#if it}
+  <div class="flex min-h-0 flex-1 flex-col">
+    <div class="flex h-16 flex-none items-center p-1">
+      <IconButton icon="arrow_back" label="Back" color="var(--color-on-surface)" onclick={() => app.back()} />
+      <div class="flex-1"></div>
+      <IconButton
+        icon="favorite"
+        label={it.fav ? 'Remove favorite' : 'Favorite'}
+        fill={it.fav}
+        color={it.fav ? 'var(--color-fav)' : 'var(--color-on-surface)'}
+        onclick={() => (it.fav = !it.fav)}
+      />
+      <IconButton icon="link" label="Copy link" color="var(--color-on-surface)" onclick={() => app.copy(it.grokUrl, 'Grok link copied')} />
+      <IconButton icon="share" label="Share" color="var(--color-on-surface)" onclick={() => app.share(it.grokUrl)} />
+    </div>
+
+    <div bind:this={scroller} class="min-h-0 flex-1 overflow-y-auto pb-[calc(40px+env(safe-area-inset-bottom))]">
+      <div class="flex h-[400px] items-center justify-center bg-surface-dim">
+        <div
+          class="relative flex max-h-full items-center justify-center"
+          style:aspect-ratio="{it.w}/{it.h}"
+          style:width="min(100%, {(400 * it.w) / it.h}px)"
+        >
+          <Media item={it} full />
+          {#if it.kind === 'video' && !it.mediaUrl}
+            <span class="relative flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(20,18,24,0.6)] text-white">
+              <Icon name="play_arrow" size={36} fill />
+            </span>
+          {/if}
+          {#if !it.mediaUrl || !app.settings.loadMedia}
+            <span class="absolute bottom-2.5 left-3 font-mono text-[11px] text-white/75">
+              {it.kind} · {it.w}:{it.h}{it.dur ? ' · ' + it.dur : ''}
+            </span>
+          {/if}
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-6 px-4 pt-4">
+        <div class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="flex h-7 items-center gap-1 rounded-lg bg-secondary-container px-2.5 text-[13px] font-medium text-on-secondary-container">
+              <Icon name={it.kind === 'video' ? 'movie' : 'image'} size={16} />
+              <span>{it.kind === 'video' ? 'Video' : 'Image'}</span>
+            </span>
+            {#if it.mode}
+              <span class="flex h-7 items-center rounded-lg border border-outline-variant px-2.5 text-[13px] text-on-variant">{it.mode}</span>
+            {/if}
+            <span class="text-[13px] text-outline">{dateTime(it.createdAt)}</span>
+          </div>
+          <div class="text-[19px] leading-[1.45] font-normal text-pretty select-text">{it.prompt || 'No prompt recorded'}</div>
+        </div>
+
+        <div class="flex gap-2">
+          <a
+            href={it.grokUrl}
+            target="_blank"
+            rel="noopener"
+            class="flex h-12 flex-1 items-center justify-center gap-2 rounded-3xl bg-primary text-[15px] font-semibold text-on-primary! hover:text-on-primary!"
+          >
+            <Icon name="open_in_new" size={20} />
+            <span>Open in Grok</span>
+          </a>
+          <a
+            href={it.grokUrl}
+            target="_blank"
+            rel="noopener"
+            onclick={() => app.copy(it.prompt, 'Prompt copied · opening Grok to remix')}
+            class="flex h-12 flex-1 items-center justify-center gap-2 rounded-3xl bg-primary-container text-[15px] font-semibold text-on-primary-container! hover:text-on-primary-container!"
+          >
+            <Icon name="auto_fix" size={20} />
+            <span>Remix in Grok</span>
+          </a>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-on-variant">Rating</span>
+          <div class="flex">
+            {#each [1, 2, 3, 4, 5] as n (n)}
+              <button
+                type="button"
+                aria-label="{n} star{n > 1 ? 's' : ''}"
+                onclick={() => (it.rating = it.rating === n ? 0 : n)}
+                class="flex h-10 w-10 items-center justify-center border-0 bg-transparent"
+                style:color={n <= it.rating ? 'var(--color-primary)' : 'var(--color-outline-variant)'}
+              >
+                <Icon name="star" size={26} fill={n <= it.rating} />
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        {#if chain.length > 1}
+          <div class="flex flex-col gap-3">
+            <div class="flex items-baseline justify-between">
+              <span class="text-base font-semibold">Image → video chain</span>
+              <span class="text-[13px] text-outline">{chain.length} steps</span>
+            </div>
+            <div class="flex items-center gap-1.5 overflow-x-auto">
+              {#each chain as c, n (c.id)}
+                <div class="flex flex-none items-center gap-1.5">
+                  {#if n > 0}<span class="text-outline"><Icon name="arrow_forward" size={20} /></span>{/if}
+                  <button
+                    type="button"
+                    onclick={() => setCur(c.id)}
+                    class="flex flex-col gap-1.5 rounded-[18px] border-0 p-1.5 text-left text-on-surface"
+                    style:background={c.id === it.id ? 'var(--color-primary-container)' : 'var(--color-surface-2)'}
+                  >
+                    <div class="relative h-24 w-24 overflow-hidden rounded-xl">
+                      <Media item={c} radius={12} />
+                      {#if c.kind === 'video'}
+                        <span class="absolute top-[5px] right-[5px] text-white"><Icon name="play_circle" size={16} fill /></span>
+                      {/if}
+                    </div>
+                    <span class="px-1 pb-0.5 text-xs text-on-variant">
+                      {c.kind === 'video' ? `Video${c.dur ? ' · ' + c.dur : ''}` : n === 0 ? 'Source image' : 'Image'}
+                    </span>
+                  </button>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if variants.length}
+          <div class="flex flex-col gap-3">
+            <span class="text-base font-semibold">Variations</span>
+            <div class="flex gap-2 overflow-x-auto">
+              {#each variants as v (v.id)}
+                <button type="button" onclick={() => setCur(v.id)} class="flex w-[140px] flex-none flex-col gap-1.5 border-0 bg-transparent p-0 text-left text-on-variant">
+                  <div class="relative h-24 w-[140px] overflow-hidden rounded-[14px]"><Media item={v} radius={14} /></div>
+                  <span class="clamp-2 text-xs leading-[1.35]">{v.prompt}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <div class="flex flex-col gap-3">
+          <span class="text-base font-semibold">Collections</span>
+          <div class="flex flex-wrap gap-2">
+            {#each itColls as c (c.id)}
+              <button
+                type="button"
+                onclick={() => app.nav('collection', { coll: c.id })}
+                class="flex h-8 items-center gap-1.5 rounded-lg border-0 bg-secondary-container px-3 text-[13px] font-medium text-on-secondary-container"
+              >
+                <Icon name="collections_bookmark" size={16} /><span>{c.name}</span>
+              </button>
+            {/each}
+            <button
+              type="button"
+              onclick={() => app.openSheet([it.id])}
+              class="flex h-8 items-center gap-1 rounded-lg border border-outline-variant bg-transparent px-3 text-[13px] font-medium text-on-variant"
+            >
+              <Icon name="add" size={18} /><span>Add</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <span class="text-base font-semibold">Notes</span>
+          <textarea
+            bind:value={it.notes}
+            placeholder="Add a note. Notes are searchable."
+            rows="3"
+            class="w-full resize-none rounded-2xl border-0 bg-surface-2 px-4 py-3.5 text-[15px] leading-[1.45] text-on-surface outline-none select-text placeholder:text-outline"
+          ></textarea>
+        </div>
+
+        <div class="flex flex-col rounded-[20px] bg-surface-1 py-1.5">
+          {#snippet row(k: string, v: string, mono = false, onCopy?: () => void)}
+            <div class="flex min-h-11 items-center justify-between gap-4 px-4 py-2.5">
+              <span class="flex-none text-sm text-outline">{k}</span>
+              <div class="flex min-w-0 items-center gap-1.5">
+                <span class="truncate text-sm text-on-surface" class:font-mono={mono}>{v}</span>
+                {#if onCopy}
+                  <button type="button" aria-label="Copy {k}" onclick={onCopy} class="flex h-7 w-7 flex-none items-center justify-center rounded-full border-0 bg-transparent text-primary">
+                    <Icon name="content_copy" size={18} />
+                  </button>
+                {/if}
+              </div>
+            </div>
+          {/snippet}
+          {@render row('Model', it.model)}
+          {#if it.mode}{@render row('Mode', it.mode)}{/if}
+          {#if it.seed != null}{@render row('Seed', String(it.seed), true, () => app.copy(String(it.seed), 'Seed copied'))}{/if}
+          {@render row('Aspect', `${it.w}:${it.h}`)}
+          {@render row('Created', dateTime(it.createdAt))}
+          {@render row('Grok ID', grokId, true, () => app.copy(it.grokUrl, 'Grok link copied'))}
+          {#if it.mediaUrl}{@render row('Asset', it.mediaUrl.replace(/^https?:\/\//, ''), true, () => app.copy(it.mediaUrl!, 'Asset URL copied'))}{/if}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
