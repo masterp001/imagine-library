@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import Media from './Media.svelte';
 
-  let { item, selectable = false }: { item: Item; selectable?: boolean } = $props();
+  let { item, selectable = false, seq }: { item: Item; selectable?: boolean; seq?: () => string[] } = $props();
 
   const masonry = $derived(app.settings.layout === 'masonry');
   const radius = $derived(masonry ? 16 : 6);
@@ -41,7 +41,7 @@
       return;
     }
     if (inSel) app.toggleSel(item.id);
-    else app.nav('detail', { cur: item.id });
+    else app.nav('detail', { cur: item.id, seq: seq?.() });
   }
 </script>
 

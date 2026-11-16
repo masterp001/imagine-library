@@ -23,13 +23,117 @@
   function setCur(id: string) {
     app.cur = id;
   }
+
+  // ---------- horizontal swipe through the list this was opened from ----------
+  const order = $derived(it && app.seq.includes(it.id) ? app.seq : app.visible.map((i) => i.id));
+  const idx = $derived(it ? order.indexOf(it.id) : -1);
+  const prev = $derived(idx > 0 ? app.byId.get(order[idx - 1]) : undefined);
+  const next = $derived(idx >= 0 && idx < order.length - 1 ? app.byId.get(order[idx + 1]) : undefined);
+  const slots = $derived([prev, it, next]);
+
+  let width = $state(0);
+  let dx = $state(0);
+  let anim = $state(false);
+  let pending = 0;
+  let drag: { x: number; y: number; t: number; id: number; on: boolean } | null = null;
+  let suppressClick = false;
+
+  function go(dir: -1 | 1) {
+    // dir -1 = next (content moves left), +1 = previous
+    if (anim || !(dir < 0 ? next : prev)) return;
+    pending = dir;
+    anim = true;
+    dx = dir * width;
+  }
+
+  function settle() {
+    if (pending) {
+      const target = pending < 0 ? next : prev;
+      pending = 0;
+      anim = false;
+      dx = 0;
+      if (target) app.cur = target.id;
+    } else {
+      anim = false;
+    }
+  }
+
+  function pdown(e: PointerEvent) {
+    if (anim || e.button > 0 || !e.isPrimary) return;
+    const el = e.target as HTMLElement;
+    // Leave the video's own control bar alone.
+    if (el.tagName === 'VIDEO' && e.clientY > el.getBoundingClientRect().bottom - 64) return;
+    drag = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, on: false };
+  }
+
+  function pmove(e: PointerEvent) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const mx = e.clientX - drag.x, my = e.clientY - drag.y;
+    if (!drag.on) {
+      if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my) * 1.2) {
+        drag.on = true;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } else if (Math.abs(my) > 10) {
+        drag = null;
+        return;
+      } else return;
+    }
+    const edge = (mx < 0 && !next) || (mx > 0 && !prev);
+    dx = edge ? mx * 0.25 : mx;
+  }
+
+  function pup(e: PointerEvent) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    if (!d.on) return;
+    suppressClick = true;
+    setTimeout(() => (suppressClick = false), 50);
+    const v = dx / Math.max(1, performance.now() - d.t);
+    const far = Math.abs(dx) > width * 0.22 || Math.abs(v) > 0.45;
+    if (far && dx < 0 && next) go(-1);
+    else if (far && dx > 0 && prev) go(1);
+    else if (dx !== 0) {
+      anim = true;
+      dx = 0;
+    }
+  }
+
+  function key(e: KeyboardEvent) {
+    const t = e.target as HTMLElement;
+    if (t.closest('input, textarea, [contenteditable]') || app.sheet) return;
+    if (e.key === 'ArrowRight') go(-1);
+    else if (e.key === 'ArrowLeft') go(1);
+  }
 </script>
+
+<svelte:window onkeydown={key} />
+
+{#snippet stage(item: Item, main: boolean)}
+  <div
+    class="relative flex max-h-full items-center justify-center"
+    style:aspect-ratio="{item.w}/{item.h}"
+    style:width="min(100%, {(400 * item.w) / item.h}px)"
+  >
+    <Media {item} full={main} />
+    {#if item.kind === 'video' && (!item.mediaUrl || !main)}
+      <span class="relative flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(20,18,24,0.6)] text-white">
+        <Icon name="play_arrow" size={36} fill />
+      </span>
+    {/if}
+    {#if !item.mediaUrl || (!app.settings.loadMedia && !offline.files[item.id])}
+      <span class="absolute bottom-2.5 left-3 font-mono text-[11px] text-white/75">
+        {item.kind} · {item.w}:{item.h}{item.dur ? ' · ' + item.dur : ''}
+      </span>
+    {/if}
+  </div>
+{/snippet}
 
 {#if it}
   <div class="flex min-h-0 flex-1 flex-col">
     <div class="flex h-16 flex-none items-center p-1">
       <IconButton icon="arrow_back" label="Back" color="var(--color-on-surface)" onclick={() => app.back()} />
-      <div class="flex-1"></div>
+      <div class="flex-1 text-center font-mono text-[12px] text-outline">{idx >= 0 && order.length > 1 ? `${(idx + 1).toLocaleString('en-US')} / ${order.length.toLocaleString('en-US')}` : ''}</div>
       <IconButton
         icon="favorite"
         label={it.fav ? 'Remove favorite' : 'Favorite'}
@@ -42,24 +146,45 @@
     </div>
 
     <div bind:this={scroller} class="min-h-0 flex-1 overflow-y-auto pb-[calc(40px+env(safe-area-inset-bottom))]">
-      <div class="flex h-[400px] items-center justify-center bg-surface-dim">
+      <div
+        class="relative h-[400px] touch-pan-y overflow-hidden bg-surface-dim select-none"
+        bind:clientWidth={width}
+        onpointerdown={pdown}
+        onpointermove={pmove}
+        onpointerup={pup}
+        onpointercancel={pup}
+        onclickcapture={(e) => suppressClick && (e.stopPropagation(), e.preventDefault())}
+        role="region"
+        aria-label="Swipe left or right for the next or previous item"
+      >
         <div
-          class="relative flex max-h-full items-center justify-center"
-          style:aspect-ratio="{it.w}/{it.h}"
-          style:width="min(100%, {(400 * it.w) / it.h}px)"
+          class="flex h-full w-full"
+          style:transform="translate3d(calc(-100% + {dx}px), 0, 0)"
+          style:transition={anim ? 'transform 260ms cubic-bezier(0.2, 0, 0, 1)' : 'none'}
+          ontransitionend={(e) => e.target === e.currentTarget && e.propertyName === 'transform' && settle()}
         >
-          <Media item={it} full />
-          {#if it.kind === 'video' && !it.mediaUrl}
-            <span class="relative flex h-16 w-16 items-center justify-center rounded-full bg-[rgba(20,18,24,0.6)] text-white">
-              <Icon name="play_arrow" size={36} fill />
-            </span>
-          {/if}
-          {#if !it.mediaUrl || (!app.settings.loadMedia && !offline.files[it.id])}
-            <span class="absolute bottom-2.5 left-3 font-mono text-[11px] text-white/75">
-              {it.kind} · {it.w}:{it.h}{it.dur ? ' · ' + it.dur : ''}
-            </span>
-          {/if}
+          {#each slots as s, i (s?.id ?? 'empty-' + i)}
+            <div class="flex h-full w-full flex-none items-center justify-center" aria-hidden={i !== 1}>
+              {#if s}{@render stage(s, i === 1)}{/if}
+            </div>
+          {/each}
         </div>
+        {#if prev}
+          <button
+            type="button"
+            aria-label="Previous"
+            onclick={() => go(1)}
+            class="absolute top-1/2 left-2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-[rgba(20,18,24,0.55)] text-white pointer-fine:flex"
+          ><Icon name="chevron_left" size={26} /></button>
+        {/if}
+        {#if next}
+          <button
+            type="button"
+            aria-label="Next"
+            onclick={() => go(-1)}
+            class="absolute top-1/2 right-2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-[rgba(20,18,24,0.55)] text-white pointer-fine:flex"
+          ><Icon name="chevron_right" size={26} /></button>
+        {/if}
       </div>
 
       <div class="flex flex-col gap-6 px-4 pt-4">

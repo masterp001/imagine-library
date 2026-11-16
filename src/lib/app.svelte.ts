@@ -10,6 +10,11 @@ interface Frame {
   coll: string;
 }
 
+interface NavExtra extends Partial<Frame> {
+  /** Ordered ids the detail view swipes through. */
+  seq?: string[];
+}
+
 const DEFAULT_SETTINGS: Settings = { layout: 'masonry', showSmartStrip: true, hideRRated: false, loadMedia: true };
 
 class App {
@@ -27,6 +32,9 @@ class App {
   screen = $state<Screen>('library');
   stack = $state<Frame[]>([]);
   cur = $state('');
+  /** Swipe order for the detail view (ids of the list it was opened from). */
+  seq = $state.raw<string[]>([]);
+  #seqStack: string[][] = [];
   coll = $state('');
   filter = $state<Filter>('all');
   selecting = $state(false);
@@ -186,6 +194,7 @@ class App {
     const f = this.stack.at(-1);
     if (f) {
       this.stack = this.stack.slice(0, -1);
+      this.seq = this.#seqStack.pop() ?? [];
       this.screen = f.screen;
       this.cur = f.cur;
       this.coll = f.coll;
@@ -194,8 +203,10 @@ class App {
     if (this.screen !== 'library') this.screen = 'library';
   }
 
-  nav(screen: Screen, extra: Partial<Frame> = {}) {
+  nav(screen: Screen, extra: NavExtra = {}) {
     this.stack = [...this.stack, { screen: this.screen, cur: this.cur, coll: this.coll }];
+    this.#seqStack.push(this.seq);
+    if (extra.seq) this.seq = extra.seq;
     this.screen = screen;
     if (extra.cur !== undefined) this.cur = extra.cur;
     if (extra.coll !== undefined) this.coll = extra.coll;
@@ -204,6 +215,7 @@ class App {
 
   tab(screen: Screen) {
     this.stack = [];
+    this.#seqStack = [];
     this.screen = screen;
     this.selecting = false;
     this.selected = [];

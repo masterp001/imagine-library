@@ -50,6 +50,7 @@ export const ICONS = {
   wifi: 0xe63e,
   stop: 0xe047,
   folder: 0xe2c7,
+  chevron_left: 0xe408,
 } as const;
 
 export type IconName = keyof typeof ICONS;

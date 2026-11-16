@@ -29,7 +29,7 @@
 
   function open(id: string) {
     app.addRecent(app.q);
-    app.nav('detail', { cur: id });
+    app.nav('detail', { cur: id, seq: results.map((r) => r.item.id) });
   }
 
   let input = $state<HTMLInputElement>();

@@ -28,6 +28,9 @@
     limit = STEP;
   });
 
+  const order = $derived([...filtered].sort((a, b) => b.createdAt - a.createdAt).map((i) => i.id));
+  const seq = () => order;
+
   const groups = $derived.by(() => {
     const out: { key: number; label: string; count: number; tiles: Item[] }[] = [];
     let shown = 0;
@@ -152,7 +155,7 @@
             <span class="text-base font-semibold">{grp.label}</span>
             <span class="text-[13px] text-outline">{grp.count}</span>
           </div>
-          <TileGrid items={grp.tiles} selectable />
+          <TileGrid items={grp.tiles} selectable {seq} />
         </section>
       {:else}
         <div class="flex flex-col items-center gap-2 px-8 py-16 text-center">

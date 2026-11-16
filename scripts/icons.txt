@@ -48,3 +48,4 @@ cookie
 wifi
 stop
 folder
+chevron_left

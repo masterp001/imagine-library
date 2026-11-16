@@ -261,7 +261,7 @@
         <div class="flex flex-col rounded-3xl bg-surface-1 py-1.5">
           {#each errs as [id, msg] (id)}
             {@const it = app.byId.get(id)}
-            <button type="button" onclick={() => app.nav('detail', { cur: id })} class="flex items-start gap-3 border-0 bg-transparent px-4 py-2 text-left text-on-surface">
+            <button type="button" onclick={() => app.nav('detail', { cur: id, seq: errs.map(([e]) => e) })} class="flex items-start gap-3 border-0 bg-transparent px-4 py-2 text-left text-on-surface">
               <span class="mt-0.5 flex-none text-fav"><Icon name="error" size={18} /></span>
               <span class="flex min-w-0 flex-col gap-0.5">
                 <span class="truncate text-sm">{it?.prompt || id}</span>
