@@ -15,9 +15,11 @@
   const grokId = $derived(it ? (it.grokUrl.split('/').pop() ?? it.id) : '');
 
   let scroller = $state<HTMLDivElement>();
+  let info = $state<HTMLDivElement>();
   $effect(() => {
     void app.cur;
     scroller?.scrollTo({ top: 0 });
+    info?.scrollTo({ top: 0 });
   });
 
   function setCur(id: string) {
@@ -113,7 +115,7 @@
   <div
     class="relative flex max-h-full items-center justify-center"
     style:aspect-ratio="{item.w}/{item.h}"
-    style:width="min(100%, {(400 * item.w) / item.h}px)"
+    style:width="min(100cqw, calc(100cqh * {item.w} / {item.h}))"
   >
     <Media {item} full={main} />
     {#if item.kind === 'video' && (!item.mediaUrl || !main)}
@@ -145,9 +147,9 @@
       <IconButton icon="share" label="Share" color="var(--color-on-surface)" onclick={() => app.share(it.grokUrl)} />
     </div>
 
-    <div bind:this={scroller} class="min-h-0 flex-1 overflow-y-auto pb-[calc(40px+env(safe-area-inset-bottom))]">
+    <div bind:this={scroller} class="min-h-0 flex-1 overflow-y-auto pb-[calc(40px+env(safe-area-inset-bottom))] lg:flex lg:overflow-hidden lg:pb-0">
       <div
-        class="relative h-[400px] touch-pan-y overflow-hidden bg-surface-dim select-none"
+        class="relative h-[400px] flex-none touch-pan-y overflow-hidden bg-surface-dim select-none lg:h-auto lg:min-w-0 lg:flex-1 lg:self-stretch"
         bind:clientWidth={width}
         onpointerdown={pdown}
         onpointermove={pmove}
@@ -164,7 +166,7 @@
           ontransitionend={(e) => e.target === e.currentTarget && e.propertyName === 'transform' && settle()}
         >
           {#each slots as s, i (s?.id ?? 'empty-' + i)}
-            <div class="flex h-full w-full flex-none items-center justify-center" aria-hidden={i !== 1}>
+            <div class="flex h-full w-full flex-none items-center justify-center [container-type:size]" aria-hidden={i !== 1}>
               {#if s}{@render stage(s, i === 1)}{/if}
             </div>
           {/each}
@@ -187,7 +189,7 @@
         {/if}
       </div>
 
-      <div class="flex flex-col gap-6 px-4 pt-4">
+      <div bind:this={info} class="flex flex-col gap-6 px-4 pt-4 lg:w-[440px] lg:flex-none lg:overflow-y-auto lg:px-6 lg:pb-10">
         <div class="flex flex-col gap-3">
           <div class="flex flex-wrap items-center gap-2">
             <span class="flex h-7 items-center gap-1 rounded-lg bg-secondary-container px-2.5 text-[13px] font-medium text-on-secondary-container">
@@ -237,7 +239,7 @@
             </div>
             {#if lf}
               <button type="button" onclick={() => offline.exportItems([it.id], 'Saved')} disabled={offline.exporting} class="flex h-10 items-center gap-1.5 rounded-[20px] border-0 bg-secondary-container px-3.5 text-[13px] font-semibold text-on-secondary-container disabled:opacity-60">
-                <Icon name="download_2" size={18} /><span>Save to phone</span>
+                <Icon name="download_2" size={18} /><span>{offline.saveLabel}</span>
               </button>
             {:else}
               <button type="button" disabled={busy} onclick={() => offline.start([it.id])} class="flex h-10 items-center gap-1.5 rounded-[20px] border-0 bg-secondary-container px-3.5 text-[13px] font-semibold text-on-secondary-container disabled:opacity-60">

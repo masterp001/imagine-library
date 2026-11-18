@@ -1,0 +1,38 @@
+appId: com.masterp001.imaginelibrary
+productName: Imagine Library
+copyright: masterp001
+directories:
+  output: release
+  buildResources: desktop-res
+# The renderer is fully bundled by Vite and the main process by esbuild,
+# so no node_modules are shipped.
+files:
+  - dist/**
+  - electron/build/**
+  - package.json
+  - "!node_modules/**"
+npmRebuild: false
+asar: true
+win:
+  icon: desktop-res/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: "Imagine-Library-${version}-${arch}-${target}.${ext}"
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Imagine Library
+portable:
+  artifactName: "Imagine-Library-${version}-portable.exe"
+linux:
+  target: [AppImage]
+  category: Graphics
+  artifactName: "Imagine-Library-${version}-${arch}.${ext}"
+mac:
+  target: [dmg]
+  category: public.app-category.photography

@@ -51,6 +51,7 @@ export const ICONS = {
   stop: 0xe047,
   folder: 0xe2c7,
   chevron_left: 0xe408,
+  check_circle: 0xe86c,
 } as const;
 
 export type IconName = keyof typeof ICONS;

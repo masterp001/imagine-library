@@ -41,6 +41,22 @@ favorites, ratings, notes and collections.
 - **Smart groups** are computed on-device from prompt keywords.
 - Everything is stored locally (IndexedDB). Nothing is uploaded.
 
+## Desktop app (Windows)
+Same app in an Electron window, with a desktop layout: navigation rail, up to 9 grid
+columns, detail view with media left and info right, arrow keys / Esc.
+- **Get it:** GitHub → Actions → *Desktop (Windows)* → latest run → *Artifacts* →
+  `imagine-library-windows` (setup `.exe` and a portable `.exe`, unsigned: on the
+  SmartScreen prompt choose *More info → Run anyway*).
+- **Grok sign-in:** Offline → *Sign in* opens grok.com in its own window. Downloads then
+  use that session's cookies (stored only in the app, `persist:grok` partition).
+- **Download folder:** default `Pictures\Imagine Library` (`media\`, `thumbs\`), changeable
+  in Offline (existing files are moved). *Save to folder* copies a collection/selection
+  to `<folder you pick>\<collection>\` with readable file names.
+- Run from source: `npm install && npm run desktop`. Build: `npm run desktop:win`
+  (Windows) or `npm run desktop:dist` (current OS).
+- Code: `electron/main.ts` (window, `app://` protocol with Range support, downloads,
+  dialogs), `electron/preload.ts` (bridge), `src/lib/desktop.ts` (types).
+
 ## Official xAI export
 The account export from grok.com (Settings → Data → *Download your data*, file
 `prod-grok-backend.json`) is imported directly: every entry of `media_posts`

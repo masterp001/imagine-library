@@ -81,7 +81,7 @@
     {/each}
   </div>
 
-  <div class="min-h-0 flex-1 overflow-y-auto pb-[calc(110px+env(safe-area-inset-bottom))]">
+  <div class="min-h-0 flex-1 overflow-y-auto pb-[calc(110px+env(safe-area-inset-bottom))] lg:pb-12">
     {#if pq.q}
       <div class="px-5 pt-2 pb-1.5 text-[13px] text-outline">
         {results.length.toLocaleString('en-US')} result{results.length === 1 ? '' : 's'} for “{pq.q}”{pq.field ? ' in ' + pq.field : ''}

@@ -46,7 +46,7 @@
   <div class="flex-none px-5 py-3">
     <h1 class="m-0 text-[30px] font-semibold tracking-[-0.02em]">Import</h1>
   </div>
-  <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-[calc(120px+env(safe-area-inset-bottom))]">
+  <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-[calc(120px+env(safe-area-inset-bottom))] lg:pb-12">
     <div class="flex flex-col gap-4 rounded-[28px] bg-surface-3 p-5">
       <div class="flex items-center gap-3.5">
         <div class="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-primary-container text-on-primary-container">

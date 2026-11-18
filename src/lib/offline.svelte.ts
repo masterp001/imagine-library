@@ -3,6 +3,7 @@ import { FileTransfer } from '@capacitor/file-transfer';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { del, get, set } from 'idb-keyval';
 import { app } from './app.svelte';
+import { desk } from './desktop';
 import { reduce } from './importer';
 import type { Item } from './types';
 
@@ -13,6 +14,10 @@ import type { Item } from './types';
  * (files/media/<id>.<ext>) with native HTTP, so CORS doesn't apply and an
  * optional grok.com cookie can be sent. A small JPEG thumbnail is rendered
  * for each file (files/thumbs/<id>.jpg) so the grid stays fast.
+ *
+ * Desktop (Electron): files go into a real folder (default Pictures/Imagine
+ * Library), downloaded by the main process with the cookies of the built-in
+ * Grok sign-in window, and served back from app://imagine/library/….
  *
  * Web/PWA: files go into Cache Storage and the service worker serves them
  * from ./offline/… — this only works if assets.grok.com allows CORS.
@@ -103,7 +108,7 @@ export function exportName(item: Item, ext: string): string {
 function errText(e: unknown): string {
   const o = (e ?? {}) as { message?: string; code?: string; httpStatus?: number; data?: { httpStatus?: number; message?: string } };
   const status = o.httpStatus ?? o.data?.httpStatus;
-  if (status) return status === 401 || status === 403 ? `HTTP ${status} · Grok refused (cookie needed?)` : `HTTP ${status}`;
+  if (status) return status === 401 || status === 403 ? `HTTP ${status} · Grok refused (sign-in needed?)` : `HTTP ${status}`;
   const m = o.message || o.data?.message || String(e);
   if (/failed to fetch|networkerror|load failed/i.test(m)) return 'Blocked by the browser (CORS) or no connection';
   return m.slice(0, 140);
@@ -179,6 +184,10 @@ const fmtDur = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)
 
 class Offline {
   readonly native = Capacitor.isNativePlatform();
+  readonly desktop = !!desk;
+  /** Desktop only: download folder and Grok sign-in state. */
+  dir = $state('');
+  grokIn = $state(false);
 
   // ---- persisted ----
   files = $state<Record<string, LocalFile>>({});
@@ -199,6 +208,10 @@ class Offline {
   count = $derived(Object.keys(this.files).length);
   bytes = $derived(Object.values(this.files).reduce((s, f) => s + f.bytes, 0));
   failed = $derived(Object.keys(this.errors).length);
+  /** Label for the "save a copy" action on this platform. */
+  get saveLabel() {
+    return this.desktop ? 'Save to folder' : this.native ? 'Save to phone' : 'Save files';
+  }
 
   #queue: string[] = [];
   #base = '';
@@ -231,6 +244,20 @@ class Offline {
         this.note = 'Storage unavailable: ' + errText(e);
       }
     }
+    if (desk) {
+      try {
+        const info = await desk.info();
+        this.dir = info.dir;
+        this.grokIn = info.signedIn;
+        desk.onGrokStatus((s) => (this.grokIn = s));
+        desk.onProgress((p) => {
+          const id = this.#urlToId.get(p.url);
+          if (id && this.active[id]) this.active[id] = { got: p.got, size: p.total };
+        });
+      } catch (e) {
+        this.note = 'Storage unavailable: ' + errText(e);
+      }
+    }
     window.addEventListener('online', () => this.#maybeResume());
     (navigator as unknown as { connection?: EventTarget }).connection?.addEventListener?.('change', () => this.#maybeResume());
     this.ready = true;
@@ -238,6 +265,7 @@ class Offline {
 
   // ================= urls =================
   #url(rel: string): string {
+    if (this.desktop) return `${location.origin}/library/${rel}`;
     return this.native ? Capacitor.convertFileSrc(this.#base + rel) : new URL('offline/' + rel, document.baseURI).href;
   }
 
@@ -372,7 +400,7 @@ class Offline {
   async #one(item: Item) {
     const ext = extOf(item);
     const rel = `media/${item.id}.${ext}`;
-    const t = this.native ? await this.#fetchNative(item, rel) : await this.#fetchWeb(item, rel, ext);
+    const t = this.desktop ? await this.#fetchDesktop(item, rel) : this.native ? await this.#fetchNative(item, rel) : await this.#fetchWeb(item, rel, ext);
     this.files[item.id] = { ext, bytes: t.bytes, thumb: t.thumb, at: Date.now() };
     // Real pixel size and duration from the file itself.
     if (t.w && t.h) {
@@ -434,6 +462,39 @@ class Offline {
     }
   }
 
+  async #fetchDesktop(item: Item, rel: string) {
+    const d = desk!;
+    const part = `media/${item.id}.part`;
+    const urls = candidates(item.mediaUrl!, this.settings.videos);
+    let bytes = 0;
+    for (let i = 0; i < urls.length; i++) {
+      this.#urlToId.set(urls[i], item.id);
+      const res = await d.download(urls[i], part).finally(() => this.#urlToId.delete(urls[i]));
+      if (res.ok) {
+        bytes = res.bytes;
+        break;
+      }
+      const st = res.status;
+      // Only a "not there" answer is worth trying the next file name.
+      if (!st || st === 401 || st >= 500 || i === urls.length - 1) throw st ? { httpStatus: st } : new Error(res.error ?? 'Download failed');
+    }
+    if (bytes < 256) {
+      await d.remove([part]);
+      throw new Error('Empty response (sign in to Grok?)');
+    }
+    await d.rename(part, rel);
+    try {
+      const t = await makeThumb(this.#url(rel), item.kind);
+      const jpg = await new Promise<Blob | null>((r) => t.canvas.toBlob(r, 'image/jpeg', 0.82));
+      if (jpg) await d.write(`thumbs/${item.id}.jpg`, await jpg.arrayBuffer());
+      return { bytes, thumb: !!jpg, w: t.w, h: t.h, dur: t.dur };
+    } catch (e) {
+      // A file that won't decode is most likely an HTML error page.
+      await d.remove([rel]);
+      throw e;
+    }
+  }
+
   async #fetchWeb(item: Item, rel: string, ext: string) {
     let res!: Response;
     for (const url of candidates(item.mediaUrl!, this.settings.videos)) {
@@ -465,7 +526,9 @@ class Offline {
       const f = this.files[id];
       if (!f) continue;
       const rels = [`media/${id}.${f.ext}`, `thumbs/${id}.jpg`];
-      if (this.native) {
+      if (desk) {
+        await desk.remove(rels).catch(() => {});
+      } else if (this.native) {
         for (const path of rels) await Filesystem.deleteFile({ path, directory: Directory.Data }).catch(() => {});
       } else {
         const cache = await caches.open(CACHE);
@@ -479,7 +542,9 @@ class Offline {
   async removeAll() {
     this.cancel();
     while (this.running) await sleep(150);
-    if (this.native) {
+    if (desk) {
+      await desk.clear().catch(() => {});
+    } else if (this.native) {
       for (const d of ['media', 'thumbs']) {
         await Filesystem.rmdir({ path: d, directory: Directory.Data, recursive: true }).catch(() => {});
         await Filesystem.mkdir({ path: d, directory: Directory.Data, recursive: true }).catch(() => {});
@@ -519,7 +584,13 @@ class Offline {
       if (!ready.length) return void app.say('Nothing downloaded yet to save');
       const dir = `Imagine Library/${safeName(folder)}`;
       let n = 0;
-      if (this.native) {
+      if (desk) {
+        const res = await desk.exportFiles(
+          ready.map((it) => ({ rel: `media/${it.id}.${this.files[it.id].ext}`, name: exportName(it, this.files[it.id].ext) })),
+          safeName(folder)
+        );
+        if (res) app.say(res.count ? `${res.count} saved to ${res.dest}` : 'Nothing could be saved');
+      } else if (this.native) {
         try { await Filesystem.requestPermissions(); } catch { /* not needed on Android 11+ */ }
         await Filesystem.mkdir({ path: dir, directory: Directory.Documents, recursive: true }).catch(() => {});
         for (const it of ready) {
@@ -568,6 +639,28 @@ class Offline {
       const data = $state.snapshot({ version: 1 as const, files: this.files, settings: this.settings }) as Persisted;
       set(KEY, data).catch(() => {});
     }, 500);
+  }
+
+  async grokLogin() {
+    if (!desk) return;
+    this.grokIn = await desk.grokLogin();
+    app.say(this.grokIn ? 'Signed in to Grok' : 'Not signed in to Grok');
+    if (this.grokIn && this.failed) void this.retryFailed();
+  }
+
+  async grokLogout() {
+    if (!desk) return;
+    this.grokIn = await desk.grokLogout();
+    app.say('Signed out of Grok');
+  }
+
+  async chooseFolder() {
+    if (!desk) return;
+    if (this.running && !this.paused) return void app.say('Pause downloads before changing the folder');
+    const r = await desk.chooseFolder();
+    if (!r) return;
+    this.dir = r.dir;
+    app.say(r.moved ? `Moved downloads to ${r.dir}` : `Download folder: ${r.dir}`);
   }
 
   saveSettings() {

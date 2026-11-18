@@ -10,7 +10,12 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "android:sync": "vite build && cap sync android",
     "android:open": "cap open android",
-    "android:apk": "vite build && cap sync android && cd android && ./gradlew assembleDebug"
+    "android:apk": "vite build && cap sync android && cd android && ./gradlew assembleDebug",
+    "desktop:main": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=electron/build --out-extension:.js=.cjs --log-level=warning",
+    "desktop": "vite build && npm run desktop:main && electron .",
+    "desktop:dist": "vite build && npm run desktop:main && electron-builder --publish never",
+    "desktop:win": "vite build && npm run desktop:main && electron-builder --win --publish never",
+    "check:electron": "tsc -p electron/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",
@@ -28,10 +33,16 @@
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.5",
     "@tsconfig/svelte": "^5.0.4",
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "svelte": "^5.57.3",
     "svelte-check": "^4.7.8",
     "tailwindcss": "^4.3.5",
     "typescript": "^5.9.3",
     "vite": "^8.3.8"
-  }
+  },
+  "description": "Browse, organize and download your Grok Imagine creations",
+  "author": "masterp001",
+  "main": "electron/build/main.cjs"
 }

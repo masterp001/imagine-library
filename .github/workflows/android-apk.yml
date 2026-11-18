@@ -24,6 +24,8 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: npm run build
       - run: npx cap sync android
       - name: Build debug APK

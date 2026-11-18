@@ -82,7 +82,7 @@
       color={offState.can && offState.have === offState.can ? 'var(--color-primary)' : 'var(--color-on-surface)'}
       onclick={downloadAll}
     />
-    <IconButton icon="download_2" label="Save to phone" color="var(--color-on-surface)" onclick={() => offline.exportItems(view.its.map((i) => i.id), view.name)} />
+    <IconButton icon="download_2" label={offline.saveLabel} color="var(--color-on-surface)" onclick={() => offline.exportItems(view.its.map((i) => i.id), view.name)} />
     <IconButton
       icon="link"
       label="Copy all Grok links"

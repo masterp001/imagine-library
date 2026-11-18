@@ -4,6 +4,7 @@
   import Media from '../components/Media.svelte';
   import Toggle from '../components/Toggle.svelte';
   import { EMPTY_STRIPE, num } from '../format';
+  import { desk } from '../desktop';
   import { fmtBytes, offline } from '../offline.svelte';
 
   const eligible = $derived(offline.eligible(app.items).length);
@@ -49,7 +50,7 @@
   <div class="flex-none px-5 py-3">
     <h1 class="m-0 text-[30px] font-semibold tracking-[-0.02em]">Offline</h1>
   </div>
-  <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-[calc(120px+env(safe-area-inset-bottom))]">
+  <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-[calc(120px+env(safe-area-inset-bottom))] lg:pb-12">
     <!-- status -->
     <div class="flex flex-col gap-4 rounded-[28px] bg-surface-3 p-5">
       <div class="flex items-center gap-3.5">
@@ -127,7 +128,7 @@
       {/if}
     </div>
 
-    {#if !offline.native}
+    {#if !offline.native && !offline.desktop}
       <div class="flex gap-3 rounded-3xl bg-surface-1 p-4 text-[13px] leading-normal text-on-variant">
         <span class="flex-none text-ok"><Icon name="error" size={20} /></span>
         <span>
@@ -167,8 +168,8 @@
               </button>
               <button
                 type="button"
-                aria-label="Save {c.name} to phone"
-                title="Save to phone"
+                aria-label="{offline.saveLabel}: {c.name}"
+                title={offline.saveLabel}
                 disabled={!c.can || offline.exporting}
                 onclick={() => offline.exportItems(c.its.map((i) => i.id), c.name)}
                 class="state-layer flex h-11 w-11 flex-none items-center justify-center rounded-full border-0 bg-transparent text-on-variant disabled:opacity-35"
@@ -179,7 +180,7 @@
           {/each}
         </div>
         <span class="px-1 pt-1 text-xs leading-normal text-outline">
-          <Icon name="download_2" size={13} /> saves a copy to {offline.native ? 'Documents/Imagine Library/<collection>' : 'your Downloads'} — visible in your Files app.
+          <Icon name="download_2" size={13} /> saves a copy to {offline.desktop ? 'a folder you pick, as <folder>/<collection>' : offline.native ? 'Documents/Imagine Library/<collection> — visible in your Files app' : 'your Downloads'}.
         </span>
       </div>
     {/if}
@@ -237,6 +238,35 @@
       </div>
     </div>
 
+    {#if offline.desktop}
+      <div class="flex flex-col gap-1">
+        <span class="px-1 pb-1.5 text-sm font-medium text-on-variant">Grok account</span>
+        <div class="flex items-center gap-3 rounded-3xl bg-surface-1 py-3 pr-3 pl-4">
+          <span style:color={offline.grokIn ? 'var(--color-ok)' : 'var(--color-outline)'}><Icon name={offline.grokIn ? 'check_circle' : 'cookie'} size={24} fill={offline.grokIn} /></span>
+          <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span class="text-[15px]">{offline.grokIn ? 'Signed in to Grok' : 'Not signed in'}</span>
+            <span class="text-[13px] text-outline">Downloads use this sign-in. It stays only in this app.</span>
+          </span>
+          {#if offline.grokIn}
+            <button type="button" onclick={() => offline.grokLogout()} class="h-10 rounded-[20px] border border-outline bg-transparent px-4 text-sm font-semibold text-on-variant">Sign out</button>
+          {:else}
+            <button type="button" onclick={() => offline.grokLogin()} class="h-10 rounded-[20px] border-0 bg-primary px-4 text-sm font-semibold text-on-primary">Sign in</button>
+          {/if}
+        </div>
+        <span class="px-1 pt-1 text-xs leading-normal text-outline">Opens grok.com in a separate window. Sign in, then close that window.</span>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <span class="px-1 pb-1.5 text-sm font-medium text-on-variant">Download folder</span>
+        <div class="flex items-center gap-3 rounded-3xl bg-surface-1 py-3 pr-3 pl-4">
+          <span class="text-on-variant"><Icon name="folder" size={24} /></span>
+          <span class="min-w-0 flex-1 truncate font-mono text-[13px] select-text" title={offline.dir}>{offline.dir}</span>
+          <button type="button" onclick={() => desk?.openFolder()} class="h-10 rounded-[20px] border border-outline bg-transparent px-4 text-sm font-semibold text-primary">Open</button>
+          <button type="button" onclick={() => offline.chooseFolder()} class="h-10 rounded-[20px] border border-outline bg-transparent px-4 text-sm font-semibold text-primary">Change</button>
+        </div>
+        <span class="px-1 pt-1 text-xs leading-normal text-outline">Files are kept as media/&lt;id&gt; with thumbnails in thumbs/. Changing the folder moves existing downloads.</span>
+      </div>
+    {:else}
     <div class="flex flex-col gap-1">
       <span class="flex items-center gap-1.5 px-1 pb-1.5 text-sm font-medium text-on-variant"><Icon name="cookie" size={18} />grok.com cookie (optional)</span>
       <div class="flex flex-col gap-2 rounded-3xl bg-surface-1 p-4">
@@ -254,6 +284,7 @@
         {#if !offline.native}<span class="text-xs text-outline">Browsers don't allow sending cookies this way — the cookie is used by the Android app only.</span>{/if}
       </div>
     </div>
+    {/if}
 
     {#if errs.length}
       <div class="flex flex-col gap-1">
@@ -285,7 +316,7 @@
       >
         <Icon name="delete" size={18} /><span>{confirmDel ? 'Tap to confirm' : `Delete offline copies (${fmtBytes(offline.bytes)})`}</span>
       </button>
-      <span class="px-1 pt-1 text-xs leading-normal text-outline">Your library, collections and notes stay. Keep the app open while a big download runs — Android pauses apps in the background.</span>
+      <span class="px-1 pt-1 text-xs leading-normal text-outline">Your library, collections and notes stay.{offline.desktop ? '' : ' Keep the app open while a big download runs — Android pauses apps in the background.'}</span>
     </div>
   </div>
 </div>

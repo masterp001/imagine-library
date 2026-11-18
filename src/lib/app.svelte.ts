@@ -32,6 +32,8 @@ class App {
   screen = $state<Screen>('library');
   stack = $state<Frame[]>([]);
   cur = $state('');
+  /** Desktop-sized window (≥1024px): side rail, more columns, two-pane detail. */
+  wide = $state(false);
   /** Swipe order for the detail view (ids of the list it was opened from). */
   seq = $state.raw<string[]>([]);
   #seqStack: string[][] = [];
@@ -62,6 +64,9 @@ class App {
 
   // ================= lifecycle =================
   async init() {
+    const mq = matchMedia('(min-width: 1024px)');
+    this.wide = mq.matches;
+    mq.addEventListener('change', (e) => (this.wide = e.matches));
     const saved = await db.load();
     if (saved) {
       this.items = saved.items;

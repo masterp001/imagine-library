@@ -19,7 +19,7 @@
   <div class="flex-none px-5 py-3">
     <h1 class="m-0 text-[30px] font-semibold tracking-[-0.02em]">Collections</h1>
   </div>
-  <div class="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-4 pb-[calc(190px+env(safe-area-inset-bottom))]">
+  <div class="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-4 pb-[calc(190px+env(safe-area-inset-bottom))] lg:pb-12">
     <div class="flex flex-col gap-3">
       <span class="text-sm font-medium text-on-variant">Yours</span>
       {#if mine.length}
@@ -89,7 +89,7 @@
   <button
     type="button"
     onclick={create}
-    class="absolute right-4 bottom-[calc(100px+env(safe-area-inset-bottom))] flex h-14 items-center gap-2.5 rounded-2xl border-0 bg-primary-container pr-5 pl-4 text-[15px] font-semibold text-on-primary-container shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
+    class="absolute right-4 bottom-[calc(100px+env(safe-area-inset-bottom))] lg:right-8 lg:bottom-8 flex h-14 items-center gap-2.5 rounded-2xl border-0 bg-primary-container pr-5 pl-4 text-[15px] font-semibold text-on-primary-container shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
   >
     <Icon name="add" size={24} />
     <span>New collection</span>

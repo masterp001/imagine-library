@@ -36,7 +36,14 @@
   ];
 
   const selectBar = $derived(app.selecting && app.screen === 'library');
-  const showNav = $derived(!selectBar && ['library', 'search', 'collections', 'offline', 'sync'].includes(app.screen));
+  const showNav = $derived(!selectBar && (app.wide || ['library', 'search', 'collections', 'offline', 'sync'].includes(app.screen)));
+  // Text-heavy screens stay readable on a wide window.
+  const narrow = $derived(['search', 'offline', 'sync'].includes(app.screen));
+
+  function onKey(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || (e.target as HTMLElement).closest('input, textarea, [contenteditable]')) return;
+    if (app.screen === 'detail' || app.screen === 'collection' || app.sheet || app.pasteOpen || app.selecting) app.back();
+  }
   const sel = $derived(app.selected);
 
   function groupSelection() {
@@ -104,10 +111,13 @@
     if (offline.settings.auto) offline.start();
   }
 
-  const toastBottom = $derived(app.screen === 'detail' || app.screen === 'collection' ? 32 : 116);
+  const toastBottom = $derived(app.wide || app.screen === 'detail' || app.screen === 'collection' ? 28 : 116);
 </script>
 
-<div class="relative mx-auto flex h-dvh max-w-[520px] flex-col overflow-hidden bg-surface pt-safe select-none sm:shadow-[0_0_0_1px_#2a2830]">
+<svelte:window onkeydown={onKey} />
+
+<div class="relative mx-auto flex h-dvh max-w-[520px] flex-col overflow-hidden bg-surface pt-safe select-none sm:shadow-[0_0_0_1px_#2a2830] lg:max-w-none lg:pl-[96px] lg:shadow-none">
+  <div class="flex min-h-0 flex-1 flex-col {narrow ? 'lg:mx-auto lg:w-full lg:max-w-[780px]' : ''}">
   {#if !app.ready}
     <div class="flex flex-1 items-center justify-center text-outline">Loading…</div>
   {:else if app.screen === 'library'}
@@ -125,16 +135,17 @@
   {:else if app.screen === 'sync'}
     <Sync />
   {/if}
+  </div>
 
   {#if showNav}
-    <nav class="absolute right-0 bottom-0 left-0 z-5 flex bg-surface-2 px-2 pt-3 pb-[max(env(safe-area-inset-bottom),16px)]">
+    <nav class="absolute right-0 bottom-0 left-0 z-5 flex bg-surface-2 px-2 pt-3 pb-[max(env(safe-area-inset-bottom),16px)] lg:top-0 lg:right-auto lg:w-[96px] lg:flex-col lg:gap-5 lg:bg-surface-1 lg:px-0 lg:pt-8">
       {#each TABS as [k, l, ic] (k)}
         {@const on = app.screen === k}
         <button
           type="button"
           onclick={() => app.tab(k)}
           aria-current={on ? 'page' : undefined}
-          class="flex flex-1 flex-col items-center gap-1 border-0 bg-transparent"
+          class="flex flex-1 flex-col items-center gap-1 border-0 bg-transparent lg:flex-none"
           style:color={on ? 'var(--color-on-surface)' : 'var(--color-on-variant)'}
         >
           <span
@@ -153,9 +164,9 @@
   {/if}
 
   {#if selectBar}
-    <div class="absolute right-0 bottom-0 left-0 z-5 flex bg-surface-2 px-2 pt-2.5 pb-[max(env(safe-area-inset-bottom),20px)] [animation:sheet-up_180ms_ease-out]">
+    <div class="absolute right-0 bottom-0 left-0 z-5 flex bg-surface-2 px-2 pt-2.5 lg:left-[96px] lg:justify-center lg:gap-6 pb-[max(env(safe-area-inset-bottom),20px)] [animation:sheet-up_180ms_ease-out]">
       {#each bulk as b (b.label)}
-        <button type="button" onclick={b.run} class="flex flex-1 flex-col items-center gap-1.5 border-0 bg-transparent pt-1 text-on-surface">
+        <button type="button" onclick={b.run} class="flex flex-1 flex-col items-center gap-1.5 border-0 bg-transparent pt-1 text-on-surface lg:max-w-[110px]">
           <Icon name={b.icon} size={24} />
           <span class="text-xs font-medium">{b.label}</span>
         </button>
@@ -218,7 +229,7 @@
   {#if app.toast}
     <div
       role="status"
-      class="absolute right-4 left-4 z-20 rounded-lg bg-inverse-surface px-4 py-3.5 text-sm text-inverse-on-surface shadow-[0_4px_12px_rgba(0,0,0,0.3)] [animation:toast-in_160ms_ease-out]"
+      class="absolute right-4 left-4 z-20 rounded-lg lg:left-auto lg:w-[400px] bg-inverse-surface px-4 py-3.5 text-sm text-inverse-on-surface shadow-[0_4px_12px_rgba(0,0,0,0.3)] [animation:toast-in_160ms_ease-out]"
       style:bottom="calc({toastBottom}px + env(safe-area-inset-bottom))"
     >
       {app.toast}

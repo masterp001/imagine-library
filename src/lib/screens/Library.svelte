@@ -111,7 +111,7 @@
     {/each}
   </div>
 
-  <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(120px+env(safe-area-inset-bottom))]">
+  <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(120px+env(safe-area-inset-bottom))] lg:pb-12">
     {#if app.items.length === 0}
       <div class="flex flex-col items-center gap-3 px-8 py-16 text-center">
         <span class="text-outline-variant"><Icon name="photo_library" size={48} /></span>
