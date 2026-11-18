@@ -20,8 +20,8 @@ win:
       arch: [x64]
     - target: portable
       arch: [x64]
-  artifactName: "Imagine-Library-${version}-${arch}-${target}.${ext}"
 nsis:
+  artifactName: "Imagine-Library-${version}-setup.${ext}"
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
