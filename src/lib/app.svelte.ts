@@ -1,4 +1,5 @@
 import { smartGroups } from './cluster';
+import { computeGrouping, type Grouping } from './grouping';
 import * as db from './db';
 import { DEMO_COLLS, demoItems } from './demo';
 import { mergeIntoLibrary, parseText, type ParsedAsset } from './importer';
@@ -15,7 +16,7 @@ interface NavExtra extends Partial<Frame> {
   seq?: string[];
 }
 
-const DEFAULT_SETTINGS: Settings = { layout: 'masonry', showSmartStrip: true, hideRRated: false, loadMedia: true };
+const DEFAULT_SETTINGS: Settings = { layout: 'masonry', showSmartStrip: true, hideRRated: false, loadMedia: true, stack: true };
 
 class App {
   // ---- persisted ----
@@ -53,8 +54,16 @@ class App {
   // ---- derived ----
   visible = $derived(this.settings.hideRRated ? this.items.filter((i) => !i.rRated) : this.items);
   byId = $derived(new Map(this.items.map((i) => [i.id, i])));
-  parents = $derived(new Set(this.items.map((i) => i.parent).filter((p): p is string => !!p)));
+  /** Batches, image → video links (exact or inferred) and origin per item. */
+  grouping = $derived<Grouping>(computeGrouping(this.items));
+  /** Ids that have children (exact or inferred). */
+  parents = $derived(new Set(this.grouping.children.keys()));
   groups = $derived<SmartGroup[]>(smartGroups(this.visible));
+
+  /** Source item id: exact parent, else the inferred image for a video. */
+  parentOf(it: Item): string | null {
+    return it.parent ?? this.grouping.inferred.get(it.id) ?? null;
+  }
   groupOf = $derived(new Map(this.groups.flatMap((g) => g.ids.map((id) => [id, g.name] as const))));
 
   #toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -81,6 +90,10 @@ class App {
     }
     this.ready = true;
     window.addEventListener('popstate', this.#onPop);
+    // Don't lose the last change when the app is closed or sent to the background.
+    const flush = () => this.flushSave();
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flush());
   }
 
   snapshot(): Persisted {
@@ -96,11 +109,53 @@ class App {
     }) as Persisted;
   }
 
+  /**
+   * Reads every persisted value so an effect re-runs on any change, without
+   * copying anything (the copy for saving happens later, off the hot path).
+   */
+  track() {
+    const read = (v: unknown): void => {
+      if (v === null || typeof v !== 'object') return;
+      if (Array.isArray(v)) for (const x of v) read(x);
+      else for (const k in v) read((v as Record<string, unknown>)[k]);
+    };
+    // Items: explicit fields are much cheaper than walking 14k proxies generically.
+    for (const it of this.items) {
+      void it.prompt, it.kind, it.w, it.h, it.createdAt, it.model, it.mode, it.seed, it.fav, it.rating, it.parent, it.variant;
+      void it.notes, it.dur, it.mediaUrl, it.thumbUrl, it.thumbhash, it.rRated, it.hue, it.grokUrl, it.colls.length;
+      for (const c of it.colls) void c;
+    }
+    read(this.colls);
+    read(this.settings);
+    read(this.history);
+    read(this.recents);
+    void this.lastImport;
+    void this.demo;
+  }
+
+  #dirty = false;
+
+  flushSave() {
+    if (!this.#dirty) return;
+    clearTimeout(this.#saveTimer);
+    this.#dirty = false;
+    db.save(this.snapshot());
+  }
+
   scheduleSave() {
     if (!this.ready) return;
-    const data = this.snapshot();
+    this.#dirty = true;
     clearTimeout(this.#saveTimer);
-    this.#saveTimer = setTimeout(() => db.save(data), 350);
+    // Snapshot + IndexedDB write only after things settle, so taps stay instant.
+    this.#saveTimer = setTimeout(() => {
+      const run = () => {
+        if (!this.#dirty) return;
+        this.#dirty = false;
+        db.save(this.snapshot());
+      };
+      if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2000 });
+      else run();
+    }, 600);
   }
 
   loadDemo(announce = true) {

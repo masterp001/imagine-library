@@ -64,6 +64,26 @@ columns, detail view with media left and info right, arrow keys / Esc.
 - Code: `electron/main.ts` (window, `app://` protocol with Range support, downloads,
   dialogs), `electron/preload.ts` (bridge), `src/lib/desktop.ts` (types).
 
+## Grouping (stacks, chains, types)
+`src/lib/grouping.ts` derives structure from the flat library. Exact data from Grok
+(`parent` from live sync / edits, `variant` from conversations) always wins; where it's
+missing (official data export: only id, prompt, type, time) heuristics fill in. Measured
+on a real 14k-item library:
+- **Stacks:** same prompt + same type, created ≤ 60 s apart (chained) = one batch,
+  standing in for Grok's `responseId`. 14,122 items → 8,086 tiles. Toggle with the
+  layers button in the Library header; selection mode shows every item.
+- **Image → video:** a video without a known source belongs to the newest image created
+  ≤ 10 min before it (81 % of videos; median 72 s). "Extend this video" links to the
+  previous video. Guessed links show as ⋯ and "likely" in the detail view.
+- **Types:** filter chips Text → image, Edits, Image → video, Text → video, No prompt.
+  Edits need model data (live sync); the export doesn't say.
+- The detail view walks a chain to its first item (image → video → extension …) and
+  shows the other members of the same batch.
+
+Performance: saving no longer snapshots the whole library on every change (tracking
+reads fields only; the copy + IndexedDB write runs debounced on idle and on
+pagehide/hidden). Favoriting in a 14k library: ~900 ms → ~55 ms.
+
 ## Live sync (Android + desktop)
 Import tab → **Live sync with Grok**. After signing in (Offline tab or the button on the
 card) the app reads the same list grok.com/imagine loads — `POST /rest/media/post/list`

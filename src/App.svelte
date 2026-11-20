@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { onMount } from 'svelte';
   import { app } from './lib/app.svelte';
   import Icon from './lib/components/Icon.svelte';
@@ -24,9 +25,10 @@
     sync.autoStart();
   });
 
-  // Persist any change (debounced inside scheduleSave).
+  // Persist any change: track cheaply, save later (debounced, idle).
   $effect(() => {
-    app.scheduleSave();
+    app.track();
+    untrack(() => app.scheduleSave());
   });
 
   const TABS: [Screen, string, IconName][] = [

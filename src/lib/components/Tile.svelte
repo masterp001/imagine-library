@@ -4,13 +4,13 @@
   import Icon from './Icon.svelte';
   import Media from './Media.svelte';
 
-  let { item, selectable = false, seq }: { item: Item; selectable?: boolean; seq?: () => string[] } = $props();
+  let { item, selectable = false, seq, count = 1 }: { item: Item; selectable?: boolean; seq?: () => string[]; count?: number } = $props();
 
   const masonry = $derived(app.settings.layout === 'masonry');
   const radius = $derived(masonry ? 16 : 6);
   const inSel = $derived(selectable && app.selecting);
   const sel = $derived(inSel && app.selected.includes(item.id));
-  const chain = $derived(!inSel && (!!item.parent || app.parents.has(item.id)));
+  const chain = $derived(!inSel && (!!app.parentOf(item) || app.parents.has(item.id)));
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let longPressed = false;
@@ -80,6 +80,15 @@
     <span class="pointer-events-none absolute bottom-[9px] left-2.5 font-mono text-[10px] text-white/70 [text-shadow:0_1px_2px_rgba(0,0,0,.5)]">
       {item.kind} · {item.w}:{item.h}
     </span>
+  {/if}
+  {#if count > 1}
+    <div
+      class="pointer-events-none absolute flex h-[22px] items-center gap-0.5 rounded-[11px] bg-[rgba(20,18,24,0.72)] pr-[7px] pl-1 text-[11px] font-semibold text-white {item.kind === 'video' ? 'top-[32px] right-1.5' : 'top-1.5 right-1.5'}"
+      title="{count} in this batch"
+    >
+      <Icon name="layers" size={14} />
+      <span>{count}</span>
+    </div>
   {/if}
   {#if item.kind === 'video'}
     <div class="pointer-events-none absolute top-1.5 right-1.5 flex h-[22px] items-center gap-0.5 rounded-[11px] bg-[rgba(20,18,24,0.72)] pr-[7px] pl-1 text-[11px] font-medium text-white">

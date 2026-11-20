@@ -4,13 +4,36 @@
   import IconButton from '../components/IconButton.svelte';
   import Media from '../components/Media.svelte';
   import { dateTime } from '../format';
+  import { ORIGIN_LABEL } from '../grouping';
   import { fmtBytes, offline } from '../offline.svelte';
   import type { Item } from '../types';
 
   const it = $derived<Item | undefined>(app.byId.get(app.cur) ?? app.items[0]);
-  const root = $derived(it?.parent ? (app.byId.get(it.parent) ?? it) : it);
-  const chain = $derived(root ? [root, ...app.items.filter((x) => x.parent === root.id).sort((a, b) => a.createdAt - b.createdAt)] : []);
-  const variants = $derived(it?.variant ? app.items.filter((x) => x.variant === it.variant && x.id !== it.id) : []);
+  /** Walk up to the first item (image → video → extension …), then list all descendants by time. */
+  const root = $derived.by(() => {
+    let cur = it;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      const p = app.parentOf(cur);
+      const up = p ? app.byId.get(p) : undefined;
+      if (!up) break;
+      cur = up;
+    }
+    return cur;
+  });
+  const chain = $derived.by(() => {
+    if (!root) return [];
+    const out = [root], seen = new Set([root.id]);
+    for (let i = 0; i < out.length && out.length < 40; i++)
+      for (const c of app.grouping.children.get(out[i].id) ?? []) if (!seen.has(c.id)) (seen.add(c.id), out.push(c));
+    return [root, ...out.slice(1).sort((a, b) => a.createdAt - b.createdAt)];
+  });
+  /** At least one link in this chain is a time-based guess, not data from Grok. */
+  const chainGuessed = $derived(chain.some((c) => app.grouping.inferred.has(c.id)));
+  const batchKey = $derived(it ? app.grouping.batchOf.get(it.id) : undefined);
+  const variants = $derived(it && batchKey ? (app.grouping.batches.get(batchKey) ?? []).filter((x) => x.id !== it.id) : []);
+  const origin = $derived(it ? app.grouping.origin.get(it.id) : undefined);
   const itColls = $derived(it ? app.colls.filter((c) => it.colls.includes(c.id)) : []);
   const grokId = $derived(it ? (it.grokUrl.split('/').pop() ?? it.id) : '');
 
@@ -196,6 +219,11 @@
               <Icon name={it.kind === 'video' ? 'movie' : 'image'} size={16} />
               <span>{it.kind === 'video' ? 'Video' : 'Image'}</span>
             </span>
+            {#if origin && origin !== 'text-image'}
+              <span class="flex h-7 items-center rounded-lg border border-outline-variant px-2.5 text-[13px] text-on-variant">
+                {ORIGIN_LABEL[origin]}{app.grouping.inferred.has(it.id) ? ' · likely' : ''}
+              </span>
+            {/if}
             {#if it.mode}
               <span class="flex h-7 items-center rounded-lg border border-outline-variant px-2.5 text-[13px] text-on-variant">{it.mode}</span>
             {/if}
@@ -269,13 +297,22 @@
         {#if chain.length > 1}
           <div class="flex flex-col gap-3">
             <div class="flex items-baseline justify-between">
-              <span class="text-base font-semibold">Image → video chain</span>
+              <span class="text-base font-semibold">{chain.some((c, n) => n > 0 && c.kind === 'video' && app.grouping.origin.get(c.id) === 'extend') ? 'Video chain' : 'Image → video chain'}</span>
               <span class="text-[13px] text-outline">{chain.length} steps</span>
             </div>
+            {#if chainGuessed}
+              <span class="-mt-1.5 text-xs leading-normal text-outline">
+                Links shown as ⋯ are a guess by time: the video was made within 10 minutes after the step before it. Live sync replaces guesses with Grok's own links.
+              </span>
+            {/if}
             <div class="flex items-center gap-1.5 overflow-x-auto">
               {#each chain as c, n (c.id)}
                 <div class="flex flex-none items-center gap-1.5">
-                  {#if n > 0}<span class="text-outline"><Icon name="arrow_forward" size={20} /></span>{/if}
+                  {#if n > 0}
+                    <span class="text-outline" style:opacity={app.grouping.inferred.has(c.id) ? 0.55 : 1} title={app.grouping.inferred.has(c.id) ? 'Likely (by time)' : 'From Grok'}>
+                      <Icon name={app.grouping.inferred.has(c.id) ? 'more_horiz' : 'arrow_forward'} size={20} />
+                    </span>
+                  {/if}
                   <button
                     type="button"
                     onclick={() => setCur(c.id)}
@@ -289,7 +326,7 @@
                       {/if}
                     </div>
                     <span class="px-1 pb-0.5 text-xs text-on-variant">
-                      {c.kind === 'video' ? `Video${c.dur ? ' · ' + c.dur : ''}` : n === 0 ? 'Source image' : 'Image'}
+                      {c.kind === 'video' ? `${app.grouping.origin.get(c.id) === 'extend' ? 'Extension' : 'Video'}${c.dur ? ' · ' + c.dur : ''}` : n === 0 ? 'Source image' : 'Image'}
                     </span>
                   </button>
                 </div>
@@ -300,7 +337,10 @@
 
         {#if variants.length}
           <div class="flex flex-col gap-3">
-            <span class="text-base font-semibold">Variations</span>
+            <div class="flex items-baseline justify-between">
+              <span class="text-base font-semibold">{batchKey?.startsWith('v:') ? 'Variations' : 'Same batch'}</span>
+              <span class="text-[13px] text-outline">{variants.length + 1} {it.kind === 'video' ? 'videos' : 'images'}{batchKey?.startsWith('b:') ? ' · same prompt, made together' : ''}</span>
+            </div>
             <div class="flex gap-2 overflow-x-auto">
               {#each variants as v (v.id)}
                 <button type="button" onclick={() => setCur(v.id)} class="flex w-[140px] flex-none flex-col gap-1.5 border-0 bg-transparent p-0 text-left text-on-variant">

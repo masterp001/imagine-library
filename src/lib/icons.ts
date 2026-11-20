@@ -52,6 +52,8 @@ export const ICONS = {
   folder: 0xe2c7,
   chevron_left: 0xe408,
   check_circle: 0xe86c,
+  layers: 0xe53b,
+  more_horiz: 0xe5d3,
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -7,42 +7,65 @@
   import TileGrid from '../components/TileGrid.svelte';
   import { ago, dayKey, dayLabel, EMPTY_STRIPE, num } from '../format';
   import { offline } from '../offline.svelte';
+  import { stack } from '../grouping';
   import type { Filter, Item } from '../types';
 
-  const FILTERS: [Filter, string][] = [['all', 'All'], ['images', 'Images'], ['videos', 'Videos'], ['favorites', 'Favorites'], ['chains', 'Chains']];
+  const FILTERS: [Filter, string][] = [
+    ['all', 'All'],
+    ['images', 'Images'],
+    ['videos', 'Videos'],
+    ['favorites', 'Favorites'],
+    ['chains', 'Chains'],
+    ['text-image', 'Text → image'],
+    ['edit', 'Edits'],
+    ['image-video', 'Image → video'],
+    ['text-video', 'Text → video'],
+    ['noprompt', 'No prompt']
+  ];
 
-  const pass = (i: Item) =>
-    app.filter === 'all' ||
-    (app.filter === 'images' && i.kind === 'image') ||
-    (app.filter === 'videos' && i.kind === 'video') ||
-    (app.filter === 'favorites' && i.fav) ||
-    (app.filter === 'chains' && (!!i.parent || app.parents.has(i.id)));
+  const pass = (i: Item) => {
+    const f = app.filter;
+    if (f === 'all') return true;
+    if (f === 'images') return i.kind === 'image';
+    if (f === 'videos') return i.kind === 'video';
+    if (f === 'favorites') return i.fav;
+    if (f === 'chains') return !!app.parentOf(i) || app.parents.has(i.id);
+    if (f === 'noprompt') return !i.prompt.trim();
+    return app.grouping.origin.get(i.id) === f;
+  };
 
   const filtered = $derived(app.visible.filter(pass));
+  const stacking = $derived(app.settings.stack && !app.selecting);
+  const sortedAll = $derived([...filtered].sort((a, b) => b.createdAt - a.createdAt));
+  /** Grid units: one per batch when stacking, else one per item. */
+  const units = $derived(stacking ? stack(sortedAll, app.grouping) : sortedAll.map((it) => ({ cover: it, count: 1, members: [it] })));
+  const counts = $derived(new Map(units.filter((u) => u.count > 1).map((u) => [u.cover.id, u.count])));
 
   // Render progressively so large libraries stay smooth on a phone.
   const STEP = 120;
   let limit = $state(STEP);
   $effect(() => {
     void app.filter;
+    void stacking;
     limit = STEP;
   });
 
-  const order = $derived([...filtered].sort((a, b) => b.createdAt - a.createdAt).map((i) => i.id));
+  // Swipe order in the detail view walks through every batch member.
+  const order = $derived(units.flatMap((u) => u.members.map((m) => m.id)));
   const seq = () => order;
 
   const groups = $derived.by(() => {
     const out: { key: number; label: string; count: number; tiles: Item[] }[] = [];
     let shown = 0;
-    const sorted = [...filtered].sort((a, b) => b.createdAt - a.createdAt);
-    for (const it of sorted) {
+    for (const u of units) {
+      const it = u.cover;
       const k = dayKey(it.createdAt);
       let g = out.at(-1);
       if (!g || g.key !== k) {
         g = { key: k, label: dayLabel(it.createdAt), count: 0, tiles: [] };
         out.push(g);
       }
-      g.count++;
+      g.count += u.count;
       if (shown < limit) {
         g.tiles.push(it);
         shown++;
@@ -64,7 +87,7 @@
     if (!sentinel) return;
     const io = new IntersectionObserver(
       (e) => {
-        if (e[0].isIntersecting && limit < filtered.length) limit += STEP;
+        if (e[0].isIntersecting && limit < units.length) limit += STEP;
       },
       { rootMargin: '800px' }
     );
@@ -91,6 +114,15 @@
           icon={app.settings.layout === 'masonry' ? 'grid_view' : 'dashboard'}
           label="Switch layout"
           onclick={() => (app.settings.layout = app.settings.layout === 'masonry' ? 'grid' : 'masonry')}
+        />
+        <IconButton
+          icon="layers"
+          label={app.settings.stack ? 'Show every item' : 'Stack batches'}
+          color={app.settings.stack ? 'var(--color-primary)' : undefined}
+          onclick={() => {
+            app.settings.stack = !app.settings.stack;
+            app.say(app.settings.stack ? 'Batches stacked' : 'Showing every item');
+          }}
         />
         <IconButton icon="checklist" label="Select" onclick={() => app.startSelect()} />
       </div>
@@ -155,7 +187,7 @@
             <span class="text-base font-semibold">{grp.label}</span>
             <span class="text-[13px] text-outline">{grp.count}</span>
           </div>
-          <TileGrid items={grp.tiles} selectable {seq} />
+          <TileGrid items={grp.tiles} selectable {seq} {counts} />
         </section>
       {:else}
         <div class="flex flex-col items-center gap-2 px-8 py-16 text-center">

@@ -53,6 +53,8 @@ export interface Settings {
   showSmartStrip: boolean;
   hideRRated: boolean;
   loadMedia: boolean;
+  /** Collapse batches (same prompt, created together) into one tile. */
+  stack: boolean;
 }
 
 export interface Persisted {
@@ -74,5 +76,5 @@ export interface SmartGroup {
 }
 
 export type Screen = 'library' | 'detail' | 'search' | 'collections' | 'collection' | 'offline' | 'sync';
-export type Filter = 'all' | 'images' | 'videos' | 'favorites' | 'chains';
+export type Filter = 'all' | 'images' | 'videos' | 'favorites' | 'chains' | 'text-image' | 'edit' | 'image-video' | 'text-video' | 'noprompt';
 export type Scope = 'all' | 'prompt' | 'notes' | 'meta';

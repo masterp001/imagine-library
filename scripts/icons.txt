@@ -50,3 +50,5 @@ stop
 folder
 chevron_left
 check_circle
+layers
+more_horiz

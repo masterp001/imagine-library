@@ -3,7 +3,7 @@
   import type { Item } from '../types';
   import Tile from './Tile.svelte';
 
-  let { items, selectable = false, seq }: { items: Item[]; selectable?: boolean; seq?: () => string[] } = $props();
+  let { items, selectable = false, seq, counts }: { items: Item[]; selectable?: boolean; seq?: () => string[]; counts?: Map<string, number> } = $props();
   const masonry = $derived(app.settings.layout === 'masonry');
   const gap = $derived(masonry ? 8 : 3);
   let w = $state(0);
@@ -13,6 +13,6 @@
 
 <div bind:clientWidth={w} style:columns={cols} style:column-gap="{gap}px" style:--gap="{gap}px">
   {#each items as item (item.id)}
-    <Tile {item} {selectable} seq={seq ?? (() => items.map((i) => i.id))} />
+    <Tile {item} {selectable} seq={seq ?? (() => items.map((i) => i.id))} count={counts?.get(item.id) ?? 1} />
   {/each}
 </div>
