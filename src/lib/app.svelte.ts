@@ -1,9 +1,8 @@
-import { smartGroups } from './cluster';
-import { computeGrouping, type Grouping } from './grouping';
+import { chains, inputsOf, sessions } from './views';
 import * as db from './db';
 import { DEMO_COLLS, demoItems } from './demo';
 import { mergeIntoLibrary, parseText, type ParsedAsset } from './importer';
-import type { Collection, Filter, ImportRecord, Item, Persisted, Scope, Screen, Settings, SmartGroup } from './types';
+import type { Collection, ImportRecord, Item, Persisted, Scope, Screen, Settings, SourceFilter } from './types';
 
 interface Frame {
   screen: Screen;
@@ -16,7 +15,7 @@ interface NavExtra extends Partial<Frame> {
   seq?: string[];
 }
 
-const DEFAULT_SETTINGS: Settings = { layout: 'masonry', showSmartStrip: true, hideRRated: false, loadMedia: true, stack: true };
+const DEFAULT_SETTINGS: Settings = { layout: 'masonry', hideRRated: false, loadMedia: true, view: 'date', newestFirst: true };
 
 class App {
   // ---- persisted ----
@@ -39,7 +38,10 @@ class App {
   seq = $state.raw<string[]>([]);
   #seqStack: string[][] = [];
   coll = $state('');
-  filter = $state<Filter>('all');
+  /** Library filters (not persisted). */
+  source = $state<SourceFilter>('all');
+  mime = $state('all');
+  favOnly = $state(false);
   selecting = $state(false);
   selected = $state<string[]>([]);
   sheet = $state(false);
@@ -54,17 +56,20 @@ class App {
   // ---- derived ----
   visible = $derived(this.settings.hideRRated ? this.items.filter((i) => !i.rRated) : this.items);
   byId = $derived(new Map(this.items.map((i) => [i.id, i])));
-  /** Batches, image → video links (exact or inferred) and origin per item. */
-  grouping = $derived<Grouping>(computeGrouping(this.items));
-  /** Ids that have children (exact or inferred). */
-  parents = $derived(new Set(this.grouping.children.keys()));
-  groups = $derived<SmartGroup[]>(smartGroups(this.visible));
-
-  /** Source item id: exact parent, else the inferred image for a video. */
-  parentOf(it: Item): string | null {
-    return it.parent ?? this.grouping.inferred.get(it.id) ?? null;
-  }
-  groupOf = $derived(new Map(this.groups.flatMap((g) => g.ids.map((id) => [id, g.name] as const))));
+  /** id → items generated from it (inputAssets / parent). */
+  usedBy = $derived.by(() => {
+    const m = new Map<string, Item[]>();
+    for (const it of this.items) for (const src of inputsOf(it)) (m.get(src) ?? m.set(src, []).get(src)!).push(it);
+    for (const l of m.values()) l.sort((a, b) => a.createdAt - b.createdAt);
+    return m;
+  });
+  /** id → session key / chain key, for "open this session / chain" from the detail view. */
+  index = $derived.by(() => {
+    const session = new Map<string, string>(), chain = new Map<string, string>();
+    for (const s of sessions(this.visible)) for (const it of s) session.set(it.id, 's:' + s[0].createdAt);
+    for (const c of chains(this.visible)) for (const it of c.items) chain.set(it.id, 'ch:' + c.items[0].id);
+    return { session, chain };
+  });
 
   #toastTimer: ReturnType<typeof setTimeout> | undefined;
   #saveTimer: ReturnType<typeof setTimeout> | undefined;

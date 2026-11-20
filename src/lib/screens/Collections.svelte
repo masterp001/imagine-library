@@ -5,7 +5,6 @@
   import { EMPTY_STRIPE } from '../format';
 
   const mine = $derived(app.colls.map((c) => ({ ...c, its: app.collItems(c.id) })));
-  const smart = $derived(app.groups.map((g) => ({ ...g, a: app.byId.get(g.ids[0]), b: app.byId.get(g.ids[1]) })));
 
   function create() {
     const name = `Collection ${app.colls.length + 1}`;
@@ -51,39 +50,6 @@
       {/if}
     </div>
 
-    {#if smart.length}
-      <div class="flex flex-col gap-3">
-        <div class="flex flex-col gap-0.5">
-          <div class="flex items-center gap-1.5 text-sm font-medium text-on-variant">
-            <span class="text-primary"><Icon name="auto_awesome" size={18} /></span><span>Smart groups</span>
-          </div>
-          <span class="text-[13px] text-outline">Grouped automatically by prompt similarity</span>
-        </div>
-        <div class="flex flex-col rounded-3xl bg-surface-1 py-1.5">
-          {#each smart as g (g.id)}
-            <button
-              type="button"
-              onclick={() => app.nav('collection', { coll: g.id })}
-              class="flex items-center gap-3.5 border-0 bg-transparent px-4 py-2 text-left text-on-surface"
-            >
-              <div class="flex flex-none">
-                <div class="relative h-11 w-11 overflow-hidden rounded-xl border-2 border-surface-1" style:background={EMPTY_STRIPE}>
-                  {#if g.a}<Media item={g.a} radius={10} />{/if}
-                </div>
-                <div class="relative -ml-[18px] h-11 w-11 overflow-hidden rounded-xl border-2 border-surface-1" style:background={EMPTY_STRIPE}>
-                  {#if g.b}<Media item={g.b} radius={10} />{/if}
-                </div>
-              </div>
-              <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span class="text-[15px] font-medium">{g.name}</span>
-                <span class="truncate text-[13px] text-outline">{g.ids.length} items · {g.kw.join(', ')}</span>
-              </div>
-              <span class="text-outline"><Icon name="chevron_right" size={22} /></span>
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
   </div>
 
   <button

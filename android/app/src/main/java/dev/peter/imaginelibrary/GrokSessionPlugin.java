@@ -145,6 +145,7 @@ public class GrokSessionPlugin extends Plugin {
     public void api(PluginCall call) {
         String path = call.getString("path", "");
         String body = call.getString("body", "{}");
+        boolean get = "GET".equalsIgnoreCase(call.getString("method", "POST"));
         boolean reload = Boolean.TRUE.equals(call.getBoolean("reload", false));
         if (!path.startsWith("/rest/")) {
             call.reject("Only grok.com /rest/ paths are allowed");
@@ -155,9 +156,11 @@ public class GrokSessionPlugin extends Plugin {
         main.post(() -> {
             ensureApiView();
             if (reload) loadApiPage(true);
+            String opts = get
+                ? "{method:'GET',credentials:'include',headers:{accept:'application/json'}}"
+                : "{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:" + JSONObject.quote(body) + "}";
             String js = "(async()=>{try{const r=await fetch(" + JSONObject.quote(path)
-                + ",{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:"
-                + JSONObject.quote(body) + "});ImagineBridge.done(" + JSONObject.quote(id)
+                + "," + opts + ");ImagineBridge.done(" + JSONObject.quote(id)
                 + ",r.status,await r.text())}catch(e){ImagineBridge.done(" + JSONObject.quote(id) + ",0,String(e))}})()";
             Runnable run = () -> apiView.evaluateJavascript(js, null);
             if (apiReady) run.run();

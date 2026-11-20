@@ -34,6 +34,24 @@ export interface Item {
   hue: number;
   /** Link to the post on grok.com. */
   grokUrl: string;
+
+  // ---- from Grok's asset data (optional: older libraries / exports lack them) ----
+  /** Uploaded by you (input photos) or made by the model. */
+  source?: 'generated' | 'upload';
+  /** e.g. image/jpeg, video/mp4. */
+  mime?: string | null;
+  /** sourceConversationId: the Imagine conversation the asset was created in. */
+  conv?: string | null;
+  /** Title of that conversation, when the data carries one. */
+  convTitle?: string | null;
+  /** inputAssets: ids of the assets this one was generated from. */
+  inputs?: string[];
+  /** rootAssetId: first asset of the generation chain. */
+  root?: string | null;
+  /** responseId: one generation request (several images at once). */
+  response?: string | null;
+  /** Generation type from mediaGenInput, e.g. textToImage, imageToImage, imageToVideo. */
+  gen?: string | null;
 }
 
 export interface Collection {
@@ -50,11 +68,14 @@ export interface ImportRecord {
 
 export interface Settings {
   layout: 'masonry' | 'grid';
-  showSmartStrip: boolean;
+  /** Legacy (smart groups were removed); kept so stored settings still load. */
+  showSmartStrip?: boolean;
   hideRRated: boolean;
   loadMedia: boolean;
-  /** Collapse batches (same prompt, created together) into one tile. */
-  stack: boolean;
+  /** Library view: by date, session, conversation or generation chain. */
+  view: 'date' | 'session' | 'conversation' | 'chain';
+  /** Sort direction for all views. */
+  newestFirst: boolean;
 }
 
 export interface Persisted {
@@ -68,13 +89,6 @@ export interface Persisted {
   demo: boolean;
 }
 
-export interface SmartGroup {
-  id: string;
-  name: string;
-  kw: string[];
-  ids: string[];
-}
-
 export type Screen = 'library' | 'detail' | 'search' | 'collections' | 'collection' | 'offline' | 'sync';
-export type Filter = 'all' | 'images' | 'videos' | 'favorites' | 'chains' | 'text-image' | 'edit' | 'image-video' | 'text-video' | 'noprompt';
+export type SourceFilter = 'all' | 'generated' | 'upload';
 export type Scope = 'all' | 'prompt' | 'notes' | 'meta';

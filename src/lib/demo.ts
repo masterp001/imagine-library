@@ -52,7 +52,17 @@ export function demoItems(now = new Date()): Item[] {
       id, kind, prompt, w, h, createdAt: d.getTime(), model: 'grok-imagine', mode, seed,
       fav: !!fav, rating, parent, variant, colls: [...colls], notes, dur: dur ?? null,
       mediaUrl: null, thumbUrl: null, thumbhash: null, rRated: false, hue,
-      grokUrl: `https://grok.com/imagine/post/${g}`
+      grokUrl: `https://grok.com/imagine/post/${g}`,
+      // Demo asset data: one conversation per day, variations share a request,
+      // videos are made from their parent image.
+      source: 'generated' as const,
+      mime: kind === 'video' ? 'video/mp4' : 'image/jpeg',
+      conv: `demo-conversation-${daysAgo}`,
+      convTitle: daysAgo === 0 ? 'Today in Imagine' : `Imagine · ${daysAgo} day${daysAgo === 1 ? '' : 's'} ago`,
+      inputs: parent ? [parent] : [],
+      root: parent,
+      response: variant,
+      gen: parent ? (kind === 'video' ? 'imageToVideo' : 'imageToImage') : kind === 'video' ? 'textToVideo' : 'textToImage'
     };
   });
 }

@@ -4,13 +4,13 @@
   import Icon from './Icon.svelte';
   import Media from './Media.svelte';
 
-  let { item, selectable = false, seq, count = 1 }: { item: Item; selectable?: boolean; seq?: () => string[]; count?: number } = $props();
+  let { item, selectable = false, seq, badge }: { item: Item; selectable?: boolean; seq?: () => string[]; badge?: string } = $props();
 
   const masonry = $derived(app.settings.layout === 'masonry');
   const radius = $derived(masonry ? 16 : 6);
   const inSel = $derived(selectable && app.selecting);
   const sel = $derived(inSel && app.selected.includes(item.id));
-  const chain = $derived(!inSel && (!!app.parentOf(item) || app.parents.has(item.id)));
+  const chain = $derived(!inSel && app.index.chain.has(item.id));
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let longPressed = false;
@@ -81,14 +81,8 @@
       {item.kind} · {item.w}:{item.h}
     </span>
   {/if}
-  {#if count > 1}
-    <div
-      class="pointer-events-none absolute flex h-[22px] items-center gap-0.5 rounded-[11px] bg-[rgba(20,18,24,0.72)] pr-[7px] pl-1 text-[11px] font-semibold text-white {item.kind === 'video' ? 'top-[32px] right-1.5' : 'top-1.5 right-1.5'}"
-      title="{count} in this batch"
-    >
-      <Icon name="layers" size={14} />
-      <span>{count}</span>
-    </div>
+  {#if badge && !inSel}
+    <div class="pointer-events-none absolute top-1.5 left-1.5 flex h-[22px] min-w-[22px] items-center justify-center rounded-[11px] bg-primary px-1.5 text-[11px] font-bold text-on-primary" title="Step {badge}">{badge}</div>
   {/if}
   {#if item.kind === 'video'}
     <div class="pointer-events-none absolute top-1.5 right-1.5 flex h-[22px] items-center gap-0.5 rounded-[11px] bg-[rgba(20,18,24,0.72)] pr-[7px] pl-1 text-[11px] font-medium text-white">
@@ -99,7 +93,7 @@
   {#if item.fav && !inSel}
     <span class="pointer-events-none absolute right-2 bottom-[7px] text-fav"><Icon name="favorite" size={18} fill /></span>
   {/if}
-  {#if chain}
+  {#if chain && !badge}
     <span class="pointer-events-none absolute top-[7px] left-[7px] flex h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-[rgba(20,18,24,0.72)] text-white">
       <Icon name="link" size={14} />
     </span>

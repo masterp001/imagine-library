@@ -38,7 +38,6 @@ favorites, ratings, notes and collections.
   thumbhash preview.
 - Videos in the same conversation as an image become an **image → video chain**; several
   images in one conversation become **Variations**.
-- **Smart groups** are computed on-device from prompt keywords.
 - Everything is stored locally (IndexedDB). Nothing is uploaded.
 
 ### Updating the Android app
@@ -64,29 +63,34 @@ columns, detail view with media left and info right, arrow keys / Esc.
 - Code: `electron/main.ts` (window, `app://` protocol with Range support, downloads,
   dialogs), `electron/preload.ts` (bridge), `src/lib/desktop.ts` (types).
 
-## Grouping (stacks, chains, types)
-`src/lib/grouping.ts` derives structure from the flat library. Exact data from Grok
-(`parent` from live sync / edits, `variant` from conversations) always wins; where it's
-missing (official data export: only id, prompt, type, time) heuristics fill in. Measured
-on a real 14k-item library:
-- **Stacks:** same prompt + same type, created ≤ 60 s apart (chained) = one batch,
-  standing in for Grok's `responseId`. 14,122 items → 8,086 tiles. Toggle with the
-  layers button in the Library header; selection mode shows every item.
-- **Image → video:** a video without a known source belongs to the newest image created
-  ≤ 10 min before it (81 % of videos; median 72 s). "Extend this video" links to the
-  previous video. Guessed links show as ⋯ and "likely" in the detail view.
-- **Types:** filter chips Text → image, Edits, Image → video, Text → video, No prompt.
-  Edits need model data (live sync); the export doesn't say.
-- The detail view walks a chain to its first item (image → video → extension …) and
-  shows the other members of the same batch.
+## Views and filters
+Library → four views (`src/lib/views.ts`), each sorted newest or oldest first (⇅):
+- **Date** – grouped by day.
+- **Sessions** – runs of activity; a new session starts after 30 min without a new item.
+- **Conversations** – grouped by `sourceConversationId` (title if the data has one).
+- **Chains** – connected by `inputAssets` / `rootAssetId` (plus parent links from live
+  sync), shown left to right in generation order, uploads marked. Filters pick chains
+  without cutting them apart.
+
+Filters: **Generated / Uploads** (`isModelGenerated`, `fileSource`) and **MIME type**
+(`mimeType`: JPEG, PNG, MP4 …), plus favorites only (♥). The detail view shows source,
+MIME type and generation type (`mediaGenInput`: text → image, image → image,
+image → video …), links to the item's session / conversation / chain, and *Made from*,
+*Used in* and *Same request* (`responseId`).
+
+Everything comes from Grok's data, no guessing. The official data export has no
+conversation ids, inputs or upload flags; those come from **live sync**, which reads
+`GET /rest/assets?includeImagineFiles=true&source=SOURCE_ANY&pageSize=100&pageToken=…`
+(the list behind grok.com/files) before the Imagine post list. Both passes run
+independently; incremental runs stop after two pages that bring nothing new.
 
 Performance: saving no longer snapshots the whole library on every change (tracking
 reads fields only; the copy + IndexedDB write runs debounced on idle and on
-pagehide/hidden). Favoriting in a 14k library: ~900 ms → ~55 ms.
+pagehide/hidden). Favoriting in a 14k library: ~900 ms → ~40 ms.
 
 ## Live sync (Android + desktop)
 Import tab → **Live sync with Grok**. After signing in (Offline tab or the button on the
-card) the app reads the same list grok.com/imagine loads — `POST /rest/media/post/list`
+card) the app reads your asset list (see *Views*) and the same list grok.com/imagine loads — `POST /rest/media/post/list`
 `{ limit, filter: { source }, cursor }` → `{ posts[…childPosts], nextCursor }` — from a
 hidden grok.com page, so requests carry your session like the website's own.
 - **Sync now** is incremental: newest first, stops after two pages with nothing new.
@@ -128,13 +132,13 @@ then works with no connection at all.
 
 ## Features
 - Library: masonry ⇄ grid, day sections, filters (Images / Videos / Favorites / Chains),
-  smart-group strip, progressive rendering for large libraries
+  progressive rendering for large libraries
 - Long-press a tile → multi-select → Add to collection / Group / Favorite / Copy links
 - Detail: real image/video, favorite, 5-star rating, notes (searchable), chain, variations,
   collections, metadata with copy, Open/Remix in Grok (Remix copies the prompt first)
 - Search with highlights, scopes (All / Prompt / Notes / Metadata) and field filters:
   `seed:` `mode:` `model:` `kind:` `ratio:` `note:` `prompt:`
-- Collections: create, rename (tap title), delete, save a smart group as a collection
+- Collections: create, rename (tap title), delete, save a session / conversation / chain as a collection
 - Android back gesture/button navigates inside the app
 
 ## Project layout
@@ -143,7 +147,7 @@ src/App.svelte                 shell: nav bar, bulk bar, sheets, toast
 src/lib/app.svelte.ts          app state (runes), navigation + history, import, persistence
 src/lib/importer.ts            tolerant Grok export parser + merge
 src/lib/offline.svelte.ts      download queue, on-device storage, thumbnails, export
-src/lib/cluster.ts             smart groups (prompt similarity)
+src/lib/views.ts               date / session / conversation / chain views, filters
 src/lib/search.ts              query parsing, matching, highlight segments
 src/lib/screens/*.svelte       Library, Detail, Search, Collections, CollectionView, Offline, Sync (Import)
 src/lib/components/*.svelte    Tile, Media, Chip, Toggle, Sheet, Icon…

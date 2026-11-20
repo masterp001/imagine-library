@@ -4,36 +4,28 @@
   import IconButton from '../components/IconButton.svelte';
   import Media from '../components/Media.svelte';
   import { dateTime } from '../format';
-  import { ORIGIN_LABEL } from '../grouping';
+  import { genLabel, inputsOf, mimeLabel, mimeOf, sourceOf } from '../views';
   import { fmtBytes, offline } from '../offline.svelte';
   import type { Item } from '../types';
 
   const it = $derived<Item | undefined>(app.byId.get(app.cur) ?? app.items[0]);
-  /** Walk up to the first item (image → video → extension …), then list all descendants by time. */
-  const root = $derived.by(() => {
-    let cur = it;
-    const seen = new Set<string>();
-    while (cur && !seen.has(cur.id)) {
-      seen.add(cur.id);
-      const p = app.parentOf(cur);
-      const up = p ? app.byId.get(p) : undefined;
-      if (!up) break;
-      cur = up;
-    }
-    return cur;
-  });
-  const chain = $derived.by(() => {
-    if (!root) return [];
-    const out = [root], seen = new Set([root.id]);
-    for (let i = 0; i < out.length && out.length < 40; i++)
-      for (const c of app.grouping.children.get(out[i].id) ?? []) if (!seen.has(c.id)) (seen.add(c.id), out.push(c));
-    return [root, ...out.slice(1).sort((a, b) => a.createdAt - b.createdAt)];
-  });
-  /** At least one link in this chain is a time-based guess, not data from Grok. */
-  const chainGuessed = $derived(chain.some((c) => app.grouping.inferred.has(c.id)));
-  const batchKey = $derived(it ? app.grouping.batchOf.get(it.id) : undefined);
-  const variants = $derived(it && batchKey ? (app.grouping.batches.get(batchKey) ?? []).filter((x) => x.id !== it.id) : []);
-  const origin = $derived(it ? app.grouping.origin.get(it.id) : undefined);
+  // ---- exact relations from Grok's data ----
+  const inputIds = $derived(it ? inputsOf(it) : []);
+  const madeFrom = $derived(inputIds.map((id) => app.byId.get(id)).filter((x): x is Item => !!x));
+  const usedIn = $derived(it ? (app.usedBy.get(it.id) ?? []) : []);
+  const sameRequest = $derived(it?.response ? app.items.filter((x) => x.response === it.response && x.id !== it.id) : []);
+  const sessionKey = $derived(it ? app.index.session.get(it.id) : undefined);
+  const chainKey = $derived(it ? app.index.chain.get(it.id) : undefined);
+  const countOf = (m: Map<string, string>, key: string | undefined) => {
+    if (!key) return 0;
+    let n = 0;
+    for (const v of m.values()) if (v === key) n++;
+    return n;
+  };
+  const sessionCount = $derived(countOf(app.index.session, sessionKey));
+  const chainCount = $derived(countOf(app.index.chain, chainKey));
+  const convCount = $derived(it?.conv ? app.visible.filter((x) => x.conv === it.conv).length : 0);
+  const gen = $derived(genLabel(it?.gen));
   const itColls = $derived(it ? app.colls.filter((c) => it.colls.includes(c.id)) : []);
   const grokId = $derived(it ? (it.grokUrl.split('/').pop() ?? it.id) : '');
 
@@ -219,10 +211,13 @@
               <Icon name={it.kind === 'video' ? 'movie' : 'image'} size={16} />
               <span>{it.kind === 'video' ? 'Video' : 'Image'}</span>
             </span>
-            {#if origin && origin !== 'text-image'}
-              <span class="flex h-7 items-center rounded-lg border border-outline-variant px-2.5 text-[13px] text-on-variant">
-                {ORIGIN_LABEL[origin]}{app.grouping.inferred.has(it.id) ? ' · likely' : ''}
-              </span>
+            <span class="flex h-7 items-center gap-1 rounded-lg border border-outline-variant px-2.5 text-[13px] text-on-variant">
+              <Icon name={sourceOf(it) === 'upload' ? 'upload' : 'auto_awesome'} size={16} />
+              <span>{sourceOf(it) === 'upload' ? 'Upload' : 'Generated'}</span>
+            </span>
+            <span class="flex h-7 items-center rounded-lg border border-outline-variant px-2.5 font-mono text-[12px] text-on-variant" title={mimeOf(it)}>{mimeLabel(mimeOf(it))}</span>
+            {#if gen}
+              <span class="flex h-7 items-center rounded-lg border border-outline-variant px-2.5 text-[13px] text-on-variant">{gen}</span>
             {/if}
             {#if it.mode}
               <span class="flex h-7 items-center rounded-lg border border-outline-variant px-2.5 text-[13px] text-on-variant">{it.mode}</span>
@@ -294,62 +289,65 @@
           </div>
         </div>
 
-        {#if chain.length > 1}
-          <div class="flex flex-col gap-3">
-            <div class="flex items-baseline justify-between">
-              <span class="text-base font-semibold">{chain.some((c, n) => n > 0 && c.kind === 'video' && app.grouping.origin.get(c.id) === 'extend') ? 'Video chain' : 'Image → video chain'}</span>
-              <span class="text-[13px] text-outline">{chain.length} steps</span>
-            </div>
-            {#if chainGuessed}
-              <span class="-mt-1.5 text-xs leading-normal text-outline">
-                Links shown as ⋯ are a guess by time: the video was made within 10 minutes after the step before it. Live sync replaces guesses with Grok's own links.
-              </span>
+        {#if sessionKey || it.conv || chainKey}
+          <div class="flex flex-col rounded-3xl bg-surface-1 py-1.5">
+            {#if sessionKey}
+              <button type="button" onclick={() => app.nav('collection', { coll: sessionKey })} class="flex items-center gap-3.5 border-0 bg-transparent px-4 py-2.5 text-left text-on-surface">
+                <span class="text-on-variant"><Icon name="schedule" size={22} /></span>
+                <span class="flex min-w-0 flex-1 flex-col"><span class="text-[15px]">Session</span><span class="text-[13px] text-outline">{sessionCount} items in this session</span></span>
+                <span class="text-outline"><Icon name="chevron_right" size={22} /></span>
+              </button>
             {/if}
-            <div class="flex items-center gap-1.5 overflow-x-auto">
-              {#each chain as c, n (c.id)}
-                <div class="flex flex-none items-center gap-1.5">
-                  {#if n > 0}
-                    <span class="text-outline" style:opacity={app.grouping.inferred.has(c.id) ? 0.55 : 1} title={app.grouping.inferred.has(c.id) ? 'Likely (by time)' : 'From Grok'}>
-                      <Icon name={app.grouping.inferred.has(c.id) ? 'more_horiz' : 'arrow_forward'} size={20} />
-                    </span>
-                  {/if}
-                  <button
-                    type="button"
-                    onclick={() => setCur(c.id)}
-                    class="flex flex-col gap-1.5 rounded-[18px] border-0 p-1.5 text-left text-on-surface"
-                    style:background={c.id === it.id ? 'var(--color-primary-container)' : 'var(--color-surface-2)'}
-                  >
-                    <div class="relative h-24 w-24 overflow-hidden rounded-xl">
-                      <Media item={c} radius={12} />
-                      {#if c.kind === 'video'}
-                        <span class="absolute top-[5px] right-[5px] text-white"><Icon name="play_circle" size={16} fill /></span>
-                      {/if}
-                    </div>
-                    <span class="px-1 pb-0.5 text-xs text-on-variant">
-                      {c.kind === 'video' ? `${app.grouping.origin.get(c.id) === 'extend' ? 'Extension' : 'Video'}${c.dur ? ' · ' + c.dur : ''}` : n === 0 ? 'Source image' : 'Image'}
-                    </span>
-                  </button>
-                </div>
-              {/each}
-            </div>
+            {#if it.conv}
+              <button type="button" onclick={() => app.nav('collection', { coll: 'c:' + it.conv })} class="flex items-center gap-3.5 border-0 bg-transparent px-4 py-2.5 text-left text-on-surface">
+                <span class="text-on-variant"><Icon name="forum" size={22} /></span>
+                <span class="flex min-w-0 flex-1 flex-col">
+                  <span class="truncate text-[15px]">{it.convTitle ?? 'Conversation'}</span>
+                  <span class="truncate font-mono text-[12px] text-outline">{convCount} items · {it.conv}</span>
+                </span>
+                <span class="text-outline"><Icon name="chevron_right" size={22} /></span>
+              </button>
+            {/if}
+            {#if chainKey}
+              <button type="button" onclick={() => app.nav('collection', { coll: chainKey })} class="flex items-center gap-3.5 border-0 bg-transparent px-4 py-2.5 text-left text-on-surface">
+                <span class="text-on-variant"><Icon name="account_tree" size={22} /></span>
+                <span class="flex min-w-0 flex-1 flex-col"><span class="text-[15px]">Generation chain</span><span class="text-[13px] text-outline">{chainCount} steps</span></span>
+                <span class="text-outline"><Icon name="chevron_right" size={22} /></span>
+              </button>
+            {/if}
           </div>
         {/if}
 
-        {#if variants.length}
+        {#snippet strip(title: string, note: string, list: Item[])}
           <div class="flex flex-col gap-3">
-            <div class="flex items-baseline justify-between">
-              <span class="text-base font-semibold">{batchKey?.startsWith('v:') ? 'Variations' : 'Same batch'}</span>
-              <span class="text-[13px] text-outline">{variants.length + 1} {it.kind === 'video' ? 'videos' : 'images'}{batchKey?.startsWith('b:') ? ' · same prompt, made together' : ''}</span>
+            <div class="flex items-baseline justify-between gap-3">
+              <span class="text-base font-semibold">{title}</span>
+              <span class="text-right text-[13px] text-outline">{note}</span>
             </div>
-            <div class="flex gap-2 overflow-x-auto">
-              {#each variants as v (v.id)}
-                <button type="button" onclick={() => setCur(v.id)} class="flex w-[140px] flex-none flex-col gap-1.5 border-0 bg-transparent p-0 text-left text-on-variant">
-                  <div class="relative h-24 w-[140px] overflow-hidden rounded-[14px]"><Media item={v} radius={14} /></div>
-                  <span class="clamp-2 text-xs leading-[1.35]">{v.prompt}</span>
-                </button>
-              {/each}
-            </div>
+            {#if list.length}
+              <div class="flex gap-2 overflow-x-auto">
+                {#each list as v (v.id)}
+                  <button type="button" onclick={() => setCur(v.id)} class="flex w-[112px] flex-none flex-col gap-1.5 border-0 bg-transparent p-0 text-left text-on-variant">
+                    <div class="relative h-[112px] w-[112px] overflow-hidden rounded-[14px]">
+                      <Media item={v} radius={14} />
+                      {#if v.kind === 'video'}<span class="absolute top-[5px] right-[5px] text-white"><Icon name="play_circle" size={16} fill /></span>{/if}
+                    </div>
+                    <span class="truncate text-xs">{sourceOf(v) === 'upload' ? 'Upload' : (genLabel(v.gen) ?? (v.kind === 'video' ? 'Video' : 'Image'))}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
           </div>
+        {/snippet}
+
+        {#if inputIds.length}
+          {@render strip('Made from', madeFrom.length < inputIds.length ? `${inputIds.length - madeFrom.length} of ${inputIds.length} not in library` : `${inputIds.length} input${inputIds.length === 1 ? '' : 's'}`, madeFrom)}
+        {/if}
+        {#if usedIn.length}
+          {@render strip('Used in', `${usedIn.length} generation${usedIn.length === 1 ? '' : 's'}`, usedIn)}
+        {/if}
+        {#if sameRequest.length}
+          {@render strip('Same request', `${sameRequest.length + 1} results of one generation`, sameRequest)}
         {/if}
 
         <div class="flex flex-col gap-3">

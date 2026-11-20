@@ -40,6 +40,30 @@ export interface ParsedAsset {
   partial?: boolean;
   /** false: w/h are placeholders, keep the size the library already has. */
   sizeKnown?: boolean;
+  source?: 'generated' | 'upload';
+  mime?: string | null;
+  convTitle?: string | null;
+  inputs?: string[];
+  root?: string | null;
+  response?: string | null;
+  gen?: string | null;
+}
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** Asset id from an id, key or URL (users/<uid>/generated/<assetId>/… → assetId). */
+function idFrom(v: unknown): string | null {
+  if (isObj(v)) return idFrom(v.assetId ?? v.id ?? v.key ?? v.url);
+  const s = str(v);
+  if (!s) return null;
+  const u = s.match(UUID);
+  if (u) return u[u.length - 1].toLowerCase();
+  return /[/:]/.test(s) ? null : s;
+}
+
+function idsFrom(v: unknown): string[] {
+  const list = Array.isArray(v) ? v : v == null ? [] : [v];
+  return [...new Set(list.map(idFrom).filter((x): x is string => !!x))];
 }
 
 const ASSET_HOST = 'https://assets.grok.com/';
@@ -114,22 +138,37 @@ const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?|$)/i;
 
 interface Ctx {
   conversation: string | null;
+  title: string | null;
   time: number | null;
 }
 
 function assetFrom(o: Obj, ctx: Ctx): ParsedAsset | null {
   const id = str(pick(o, ['assetId', 'asset_id', 'mediaId', 'postId']));
   if (!id) return null;
+  if (o.isDeleted === true) return null;
+  // Grok's asset record: mediaGenInput.{textToImage|imageToImage|…}{prompt, inputAssets, modelName, aspectRatio}
+  const mgi = isObj(o.mediaGenInput) ? o.mediaGenInput : null;
+  const genKey = mgi ? (Object.keys(mgi).find((k) => isObj(mgi[k])) ?? null) : null;
+  const g: Obj = genKey && mgi ? (mgi[genKey] as Obj) : {};
   const key = pick(o, ['key', 'assetKey', 'url', 'mediaUrl', 'imageUrl', 'videoUrl', 'publicUrl']);
-  const prompt = str(pick(o, ['prompt', 'originalPrompt', 'revisedPrompt', 'text', 'caption', 'title'])) ?? '';
+  const prompt = str(g.prompt) ?? str(pick(o, ['prompt', 'originalPrompt', 'revisedPrompt', 'text', 'caption'])) ?? '';
   if (!key && !prompt) return null;
 
-  const model = str(pick(o, ['modelName', 'model', 'modelId'])) ?? 'grok-imagine';
+  const model = str(g.modelName) ?? str(pick(o, ['modelName', 'model', 'modelId'])) ?? 'grok-imagine';
   const mime = str(pick(o, ['mimeType', 'contentType', 'mediaType', 'type'])) ?? '';
+  // Asset lists also hold chat attachments (PDFs etc.): keep images and videos only.
+  if (/\//.test(mime) && !/^(image|video)\//i.test(mime)) return null;
   const mediaUrl = toUrl(key);
   const isVideo =
     /video/i.test(model) || mime.toLowerCase().startsWith('video') || /^video$/i.test(mime) || (mediaUrl ? VIDEO_EXT.test(mediaUrl) : false);
-  const [w, h] = toRatio(pick(o, ['aspectRatio', 'aspect_ratio', 'ratio']), o);
+  const W = typeof o.width === 'number' ? o.width : 0, H = typeof o.height === 'number' ? o.height : 0;
+  const [w, h] = W && H ? reduce(Math.round(W), Math.round(H)) : toRatio(g.aspectRatio ?? pick(o, ['aspectRatio', 'aspect_ratio', 'ratio']), o);
+  const aux = isObj(o.auxKeys) ? o.auxKeys : {};
+  const inputs = idsFrom(g.inputAssets ?? o.inputAssets).concat(idsFrom(aux.image_reference), idsFrom(aux.image_references)).filter((x) => x !== id);
+  const fileSource = String(o.fileSource ?? '');
+  // isModelGenerated is authoritative; fileSource (e.g. SELF_UPLOAD_FILE_SOURCE) only when it's missing.
+  const upload = o.isModelGenerated === false || (o.isModelGenerated !== true && /upload/i.test(fileSource));
+  const rootId = idFrom(o.rootAssetId);
   const seedRaw = pick(o, ['seed']);
   const seed = seedRaw != null && isFinite(Number(seedRaw)) ? Number(seedRaw) : null;
   const rr = pick(o, ['rRated', 'r_rated', 'nsfw', 'isNsfw']);
@@ -144,12 +183,20 @@ function assetFrom(o: Obj, ctx: Ctx): ParsedAsset | null {
     mode: str(pick(o, ['mode', 'imagineMode', 'style'])),
     seed,
     parent: str(pick(o, ['parentAssetId', 'parentPostId', 'sourceAssetId', 'originalAssetId', 'inputAssetId', 'imageAssetId'])),
-    conversation: str(pick(o, ['conversationId', 'conversation_id'])) ?? ctx.conversation,
+    conversation: str(pick(o, ['sourceConversationId', 'conversationId', 'conversation_id'])) ?? ctx.conversation,
     dur: isVideo ? fmtDur(pick(o, ['duration', 'durationSeconds', 'videoDuration', 'durationMs'])) : null,
     mediaUrl,
-    thumbUrl: toUrl(pick(o, ['thumbnailKey', 'thumbnailUrl', 'thumbKey', 'previewUrl', 'posterUrl'])),
+    thumbUrl: toUrl(pick(o, ['previewImageKey', 'thumbnailKey', 'thumbnailUrl', 'thumbKey', 'previewUrl', 'posterUrl'])),
     thumbhash: str(pick(o, ['thumbhash', 'thumbHash'])),
-    rRated: rr === true || rr === 'true' || rr === 1
+    rRated: rr === true || rr === 'true' || rr === 1,
+    sizeKnown: !!(W && H) || !!(g.aspectRatio ?? pick(o, ['aspectRatio', 'aspect_ratio', 'ratio'])),
+    source: upload ? 'upload' : 'generated',
+    mime: /\//.test(mime) ? mime.toLowerCase() : null,
+    convTitle: ctx.title,
+    inputs: [...new Set(inputs)],
+    root: rootId && rootId !== id ? rootId : null,
+    response: str(o.responseId),
+    gen: genKey
   };
 }
 
@@ -161,6 +208,7 @@ function merge(a: ParsedAsset, b: ParsedAsset): ParsedAsset {
     else if (k === 'prompt' && typeof v === 'string' && v.length > (cur as string).length) out[k] = v;
     else if (k === 'createdAt' && typeof v === 'number' && typeof cur === 'number') out[k] = Math.min(cur, v);
     else if (k === 'rRated') out[k] = (cur as boolean) || (v as boolean);
+    else if (k === 'inputs' && Array.isArray(v) && Array.isArray(cur)) out[k] = [...new Set([...(cur as string[]), ...(v as string[])])];
   }
   return out as unknown as ParsedAsset;
 }
@@ -199,7 +247,9 @@ function fromMediaPosts(posts: unknown[]): ParsedAsset[] {
       thumbUrl: dir && video ? dir + 'preview_image.jpg' : null,
       thumbhash: null,
       rRated: false,
-      partial: true
+      partial: true,
+      source: 'generated',
+      mime: video ? 'video/mp4' : 'image/jpeg'
     });
   }
   return out;
@@ -252,7 +302,11 @@ export function fromPostList(posts: unknown, parent: Obj | null = null, out: Par
         thumbUrl: str(p.thumbnailImageUrl) ?? null,
         thumbhash: str(p.thumbhash) ?? null,
         rRated: p.rRated === true || p.isRRated === true,
-        sizeKnown: !!sz
+        sizeKnown: !!sz,
+        source: 'generated',
+        mime: str(p.mimeType)?.toLowerCase() ?? (video ? 'video/mp4' : 'image/jpeg'),
+        inputs: parentId && parentId !== id ? [parentId] : [],
+        gen: parent ? (video ? 'imageToVideo' : 'imageToImage') : null
       });
     }
     fromPostList(p.childPosts, p, out);
@@ -283,6 +337,7 @@ export function parseExport(json: unknown): ParsedAsset[] {
       (('latestAssetMetadata' in o || 'assets' in o || 'responses' in o || 'messages' in o) ? str(o.id) : null);
     const next: Ctx = {
       conversation: convId ?? ctx.conversation,
+      title: (convId ? str(o.title) : null) ?? ctx.title,
       time: toTime(pick(o, ['createTime', 'createdAt', 'created_at', 'modifyTime', 'updateTime'])) ?? ctx.time
     };
     const a = assetFrom(o, next);
@@ -290,7 +345,7 @@ export function parseExport(json: unknown): ParsedAsset[] {
     for (const v of Object.values(o)) if (v && typeof v === 'object') walk(v, next, depth + 1);
   };
 
-  walk(json, { conversation: null, time: null }, 0);
+  walk(json, { conversation: null, title: null, time: null }, 0);
   return [...found.values()];
 }
 
@@ -334,25 +389,11 @@ export function mergeIntoLibrary(existing: Item[], parsed: ParsedAsset[]): { ite
   let added = 0, updated = 0;
   const now = Date.now();
 
-  // Infer chains: a video in the same conversation as an earlier image.
-  const byConv = new Map<string, ParsedAsset[]>();
-  for (const p of parsed) if (p.conversation) (byConv.get(p.conversation) ?? byConv.set(p.conversation, []).get(p.conversation)!).push(p);
   const ids = new Set(parsed.map((p) => p.id).concat(existing.map((e) => e.id)));
 
   for (const p of parsed) {
-    let parent = p.parent && ids.has(p.parent) && p.parent !== p.id ? p.parent : null;
-    let variant: string | null = null;
-    if (p.conversation) {
-      const sibs = byConv.get(p.conversation)!;
-      const images = sibs.filter((s) => s.kind === 'image');
-      if (!parent && p.kind === 'video') {
-        const earlier = images
-          .filter((s) => (s.createdAt ?? 0) <= (p.createdAt ?? Infinity))
-          .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0] ?? images[0];
-        if (earlier) parent = earlier.id;
-      }
-      if (p.kind === 'image' && images.length > 1) variant = 'conv:' + p.conversation;
-    }
+    // Only links that come from the data itself; no guessing.
+    const parent = p.parent && ids.has(p.parent) && p.parent !== p.id ? p.parent : null;
 
     const base: Omit<Item, 'fav' | 'rating' | 'colls' | 'notes'> = {
       id: p.id,
@@ -365,14 +406,22 @@ export function mergeIntoLibrary(existing: Item[], parsed: ParsedAsset[]): { ite
       mode: p.mode,
       seed: p.seed,
       parent,
-      variant,
+      variant: null,
       dur: p.dur,
       mediaUrl: p.mediaUrl,
       thumbUrl: p.thumbUrl,
       thumbhash: p.thumbhash,
       rRated: p.rRated,
       hue: hueFor(p.id),
-      grokUrl: `https://grok.com/imagine/post/${p.id}`
+      grokUrl: `https://grok.com/imagine/post/${p.id}`,
+      source: p.source ?? 'generated',
+      mime: p.mime ?? null,
+      conv: p.conversation,
+      convTitle: p.convTitle ?? null,
+      inputs: p.inputs ?? [],
+      root: p.root ?? null,
+      response: p.response ?? null,
+      gen: p.gen ?? null
     };
     const prev = byId.get(p.id);
     if (prev && p.partial) {
@@ -382,7 +431,9 @@ export function mergeIntoLibrary(existing: Item[], parsed: ParsedAsset[]): { ite
         prompt: prev.prompt || base.prompt,
         mediaUrl: prev.mediaUrl ?? base.mediaUrl,
         thumbUrl: prev.thumbUrl ?? base.thumbUrl,
-        createdAt: prev.createdAt || base.createdAt
+        createdAt: prev.createdAt || base.createdAt,
+        source: prev.source ?? base.source,
+        mime: prev.mime ?? base.mime
       };
       if (JSON.stringify(next) !== JSON.stringify(prev)) updated++;
       byId.set(p.id, next);
@@ -392,7 +443,17 @@ export function mergeIntoLibrary(existing: Item[], parsed: ParsedAsset[]): { ite
         createdAt: p.createdAt ?? prev.createdAt,
         prompt: base.prompt || prev.prompt,
         parent: base.parent ?? prev.parent,
-        variant: base.variant ?? prev.variant,
+        variant: prev.variant ?? null,
+        // Asset-data fields: new values win, missing ones keep what's known.
+        source: p.source ?? prev.source ?? 'generated',
+        mime: base.mime ?? prev.mime ?? null,
+        conv: base.conv ?? prev.conv ?? null,
+        convTitle: base.convTitle ?? prev.convTitle ?? null,
+        inputs: [...new Set([...(prev.inputs ?? []), ...(base.inputs ?? [])])],
+        root: base.root ?? prev.root ?? null,
+        response: base.response ?? prev.response ?? null,
+        gen: base.gen ?? prev.gen ?? null,
+        model: base.model !== 'grok-imagine' && base.model !== 'imagine-image' && base.model !== 'imagine-video' ? base.model : prev.model,
         dur: base.dur ?? prev.dur,
         w: p.sizeKnown === false ? prev.w : base.w,
         h: p.sizeKnown === false ? prev.h : base.h,

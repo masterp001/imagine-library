@@ -11,7 +11,7 @@ export interface GrokSessionPlugin {
   login(): Promise<GrokState>;
   logout(): Promise<GrokState>;
   getCookie(o: { url: string }): Promise<GrokState & { cookie: string }>;
-  api(o: { path: string; body: string; reload?: boolean }): Promise<{ status: number; text: string }>;
+  api(o: { path: string; body: string; reload?: boolean; method?: 'GET' | 'POST' }): Promise<{ status: number; text: string }>;
 }
 
 export const GrokSession = Capacitor.getPlatform() === 'android' ? registerPlugin<GrokSessionPlugin>('GrokSession') : undefined;

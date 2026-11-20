@@ -5,13 +5,14 @@
   import TileGrid from '../components/TileGrid.svelte';
   import { num } from '../format';
   import { offline } from '../offline.svelte';
-  import type { Item } from '../types';
+  import { findGroup } from '../views';
 
   const view = $derived.by(() => {
-    if (app.coll.startsWith('s:')) {
-      const g = app.groups.find((x) => x.id === app.coll);
-      const its = (g?.ids ?? []).map((id) => app.byId.get(id)).filter((i): i is Item => !!i);
-      return { smart: true, name: g?.name ?? 'Smart group', kw: g?.kw ?? [], its, sub: `${its.length} items · updates as you import` };
+    // Session / conversation / chain opened from the detail view (read-only).
+    if (/^(s|c|ch):/.test(app.coll)) {
+      const g = findGroup(app.visible, app.coll);
+      const kind = app.coll.startsWith('s:') ? 'Session' : app.coll.startsWith('ch:') ? 'Chain' : 'Conversation';
+      return { smart: true, name: g?.title ?? kind, kw: [] as string[], its: g?.items ?? [], sub: `${kind} · ${g?.sub ?? 'no items'}` };
     }
     const c = app.colls.find((x) => x.id === app.coll);
     const its = c ? app.collItems(c.id) : [];

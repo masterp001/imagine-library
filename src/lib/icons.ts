@@ -54,6 +54,12 @@ export const ICONS = {
   check_circle: 0xe86c,
   layers: 0xe53b,
   more_horiz: 0xe5d3,
+  swap_vert: 0xe0c3,
+  info: 0xe88e,
+  upload: 0xe2c6,
+  schedule: 0xe192,
+  forum: 0xe0bf,
+  account_tree: 0xe97a,
 } as const;
 
 export type IconName = keyof typeof ICONS;

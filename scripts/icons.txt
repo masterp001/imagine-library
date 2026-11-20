@@ -52,3 +52,9 @@ chevron_left
 check_circle
 layers
 more_horiz
+swap_vert
+info
+upload
+schedule
+forum
+account_tree

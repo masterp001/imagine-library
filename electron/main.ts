@@ -359,10 +359,14 @@ function registerIpc() {
     return { count, dest };
   });
 
-  handle('grok:api', async (_e, p: string, body: string, reload?: boolean) => {
+  handle('grok:api', async (_e, p: string, body: string, reload?: boolean, method?: string) => {
     if (!/^\/rest\//.test(p)) throw new Error('Only grok.com /rest/ paths are allowed');
     const w = await apiWindow(!!reload);
-    const code = `(async()=>{try{const r=await fetch(${JSON.stringify(p)},{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:${JSON.stringify(body)}});return {status:r.status,text:await r.text()}}catch(e){return {status:0,text:String(e)}}})()`;
+    const opts =
+      method === 'GET'
+        ? `{method:'GET',credentials:'include',headers:{accept:'application/json'}}`
+        : `{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:${JSON.stringify(body)}}`;
+    const code = `(async()=>{try{const r=await fetch(${JSON.stringify(p)},${opts});return {status:r.status,text:await r.text()}}catch(e){return {status:0,text:String(e)}}})()`;
     return (await w.webContents.executeJavaScript(code, true)) as { status: number; text: string };
   });
   handle('grok:status', () => grokSignedIn());

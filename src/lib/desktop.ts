@@ -12,7 +12,7 @@ export interface DesktopApi {
   chooseFolder(): Promise<{ dir: string; moved: boolean } | null>;
   exportFiles(files: { rel: string; name: string }[], folder: string): Promise<{ count: number; dest: string } | null>;
   grokStatus(): Promise<boolean>;
-  grokApi(path: string, body: string, reload?: boolean): Promise<{ status: number; text: string }>;
+  grokApi(path: string, body: string, reload?: boolean, method?: 'GET' | 'POST'): Promise<{ status: number; text: string }>;
   grokLogin(): Promise<boolean>;
   grokLogout(): Promise<boolean>;
   onProgress(cb: (p: { url: string; got: number; total: number }) => void): () => void;

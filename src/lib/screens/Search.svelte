@@ -18,7 +18,7 @@
   });
 
   const pq = $derived(parseQuery(dq, app.scope));
-  const results = $derived(search(app.visible, app.colls, app.groupOf, pq));
+  const results = $derived(search(app.visible, app.colls, new Map(), pq));
   const MAX = 200;
   const recents = $derived(app.recents.length ? app.recents : SUGGEST);
 

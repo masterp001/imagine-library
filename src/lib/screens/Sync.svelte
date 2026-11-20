@@ -74,6 +74,9 @@
         {#if sync.note && !sync.running}
           <div class="text-[13px] leading-normal text-fav">{sync.note}</div>
         {/if}
+        {#if sync.assetsNote && !sync.running}
+          <div class="text-[13px] leading-normal text-on-variant">{sync.assetsNote}</div>
+        {/if}
         <div class="flex gap-2">
           {#if !offline.grokIn}
             <button type="button" onclick={() => offline.grokLogin()} class="flex h-12 flex-1 items-center justify-center gap-2 rounded-3xl border-0 bg-primary text-[15px] font-semibold text-on-primary">
@@ -114,7 +117,7 @@
             </div>
           </div>
         </div>
-        <span class="text-xs leading-normal text-outline">Uses the same list grok.com/imagine loads, with your sign-in. It's not an official API and may change. The data export still works as a fallback.</span>
+        <span class="text-xs leading-normal text-outline">Reads your asset list (grok.com/files: uploads, conversations, inputs) and the Imagine post list, with your sign-in. It's not an official API and may change. The data export still works as a fallback.</span>
       </div>
     {/if}
 
@@ -188,7 +191,6 @@
       <div class="rounded-3xl bg-surface-1 py-1">
         <Toggle label="Stream media from Grok" sub="For items not downloaded yet. Off saves data" on={app.settings.loadMedia} onchange={(v) => (app.settings.loadMedia = v)} />
         <Toggle label="Hide R-rated" sub="Otherwise shown blurred in the grid" on={app.settings.hideRRated} onchange={(v) => (app.settings.hideRRated = v)} />
-        <Toggle label="Smart groups strip" sub="Show groups above the library" on={app.settings.showSmartStrip} onchange={(v) => (app.settings.showSmartStrip = v)} />
       </div>
     </div>
 
