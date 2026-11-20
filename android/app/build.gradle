@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 
+// CI sets GITHUB_RUN_NUMBER, so every build is a higher version that Android accepts as an update.
+def buildNo = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
 android {
     namespace = "dev.peter.imaginelibrary"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +10,8 @@ android {
         applicationId "dev.peter.imaginelibrary"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode buildNo
+        versionName "1.${buildNo}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +19,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // One fixed key for every build (CI and local). Android only installs an update
+    // over an existing app when the signature matches. Override via env if you move
+    // the key into GitHub secrets.
+    signingConfigs {
+        shared {
+            storeFile file(System.getenv("ANDROID_KEYSTORE_FILE") ?: "imagine-debug.keystore")
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "imagine-library"
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "imagine"
+            keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "imagine-library"
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.shared
+        }
         release {
+            signingConfig signingConfigs.shared
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

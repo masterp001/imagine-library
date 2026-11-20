@@ -41,6 +41,13 @@ favorites, ratings, notes and collections.
 - **Smart groups** are computed on-device from prompt keywords.
 - Everything is stored locally (IndexedDB). Nothing is uploaded.
 
+### Updating the Android app
+Every CI build gets a higher version (`1.<run number>`, shown at the bottom of the
+Import screen) and is signed with the same key (`android/app/imagine-debug.keystore`),
+so a new APK installs over the old one and keeps your library and downloads.
+Builds made before this change were signed with random keys: uninstall that old app
+once, then install the new APK.
+
 ## Desktop app (Windows)
 Same app in an Electron window, with a desktop layout: navigation rail, up to 9 grid
 columns, detail view with media left and info right, arrow keys / Esc.

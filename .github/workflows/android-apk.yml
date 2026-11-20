@@ -31,7 +31,9 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Name the APK after the build number
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk "imagine-library-1.${{ github.run_number }}.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: imagine-library-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: imagine-library-apk-1.${{ github.run_number }}
+          path: imagine-library-1.${{ github.run_number }}.apk

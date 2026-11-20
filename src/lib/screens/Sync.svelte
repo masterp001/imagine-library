@@ -108,6 +108,7 @@
         <div class="text-xs leading-normal text-pretty text-outline">
           Your library is stored only on this device. Media is downloaded from assets.grok.com into the app (see Offline); nothing is uploaded anywhere.
         </div>
+        <div class="font-mono text-[11px] text-outline">Version {__BUILD__}</div>
       </div>
     </div>
 
