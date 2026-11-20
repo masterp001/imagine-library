@@ -4,6 +4,7 @@ import { Directory, Filesystem } from '@capacitor/filesystem';
 import { del, get, set } from 'idb-keyval';
 import { app } from './app.svelte';
 import { desk } from './desktop';
+import { GrokSession } from './grokSession';
 import { reduce } from './importer';
 import type { Item } from './types';
 
@@ -39,6 +40,8 @@ export interface OfflineSettings {
   cookie: string;
   /** Video quality to download; 'off' keeps videos online-only. */
   videos: 'hd' | 'sd' | 'off';
+  /** Android: snapshot of the in-app Grok sign-in cookie (fallback if the WebView drops it). */
+  grokCookie?: string;
 }
 
 interface Persisted {
@@ -185,6 +188,8 @@ const fmtDur = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)
 class Offline {
   readonly native = Capacitor.isNativePlatform();
   readonly desktop = !!desk;
+  /** Grok can be signed into inside the app (desktop window or Android WebView). */
+  readonly canLogin = !!desk || !!GrokSession;
   /** Desktop only: download folder and Grok sign-in state. */
   dir = $state('');
   grokIn = $state(false);
@@ -236,6 +241,11 @@ class Offline {
       try {
         for (const d of ['media', 'thumbs']) await Filesystem.mkdir({ path: d, directory: Directory.Data, recursive: true }).catch(() => {});
         this.#base = (await Filesystem.getUri({ path: '', directory: Directory.Data })).uri.replace(/\/?$/, '/');
+        if (GrokSession) {
+          const st = await GrokSession.status();
+          this.grokIn = st.signedIn || !!this.settings.grokCookie;
+          this.#ua = st.userAgent;
+        }
         await FileTransfer.addListener('progress', (p) => {
           const id = this.#urlToId.get(p.url);
           if (id && this.active[id]) this.active[id] = { got: p.bytes, size: p.lengthComputable ? p.contentLength : 0 };
@@ -413,9 +423,32 @@ class Offline {
     this.#save();
   }
 
-  #headers(): Record<string, string> {
-    const h: Record<string, string> = { 'User-Agent': UA, Referer: 'https://grok.com/', Accept: '*/*' };
-    const c = this.settings.cookie.trim().replace(/^cookie:\s*/i, '');
+  #ua = '';
+  #cookieCache = new Map<string, { at: number; cookie: string }>();
+
+  /** Cookie from the in-app sign-in for this URL's host (cached briefly). */
+  async #sessionCookie(url: string): Promise<string> {
+    if (!GrokSession) return '';
+    const host = new URL(url).host;
+    const hit = this.#cookieCache.get(host);
+    if (hit && Date.now() - hit.at < 60_000) return hit.cookie;
+    let cookie = '';
+    try {
+      const live = (await GrokSession.getCookie({ url })).cookie;
+      // Prefer whatever carries the sso session; the saved snapshot covers a WebView that dropped it.
+      cookie = /(^|;\s*)sso(-rw)?=/.test(live) ? live : this.settings.grokCookie || live;
+    } catch {
+      cookie = this.settings.grokCookie ?? '';
+    }
+    this.#cookieCache.set(host, { at: Date.now(), cookie });
+    return cookie;
+  }
+
+  async #headers(url: string): Promise<Record<string, string>> {
+    // Same UA as the sign-in WebView, so Cloudflare's clearance cookie stays valid.
+    const h: Record<string, string> = { 'User-Agent': this.#ua || UA, Referer: 'https://grok.com/', Accept: '*/*' };
+    const manual = this.settings.cookie.trim().replace(/^cookie:\s*/i, '');
+    const c = manual || (await this.#sessionCookie(url));
     if (c) h.Cookie = c;
     return h;
   }
@@ -428,7 +461,7 @@ class Offline {
     for (let i = 0; i < urls.length; i++) {
       this.#urlToId.set(urls[i], item.id);
       try {
-        await FileTransfer.downloadFile({ url: urls[i], path: uri, progress: true, headers: this.#headers(), connectTimeout: 20_000, readTimeout: 90_000 });
+        await FileTransfer.downloadFile({ url: urls[i], path: uri, progress: true, headers: await this.#headers(urls[i]), connectTimeout: 20_000, readTimeout: 90_000 });
         break;
       } catch (e) {
         // Only a "not there" answer is worth trying the next file name.
@@ -642,6 +675,22 @@ class Offline {
   }
 
   async grokLogin() {
+    if (GrokSession) {
+      const st = await GrokSession.login();
+      this.#ua = st.userAgent;
+      this.#cookieCache.clear();
+      if (st.signedIn) {
+        // Keep a copy: the cookie that carries the session, for asset downloads.
+        const a = (await GrokSession.getCookie({ url: 'https://assets.grok.com/' })).cookie;
+        const g = (await GrokSession.getCookie({ url: 'https://grok.com/' })).cookie;
+        this.settings.grokCookie = /(^|;\s*)sso(-rw)?=/.test(a) ? a : g;
+        this.#save();
+      }
+      this.grokIn = st.signedIn;
+      app.say(st.signedIn ? 'Signed in to Grok' : 'Not signed in to Grok');
+      if (st.signedIn && this.failed) void this.retryFailed();
+      return;
+    }
     if (!desk) return;
     this.grokIn = await desk.grokLogin();
     app.say(this.grokIn ? 'Signed in to Grok' : 'Not signed in to Grok');
@@ -649,6 +698,15 @@ class Offline {
   }
 
   async grokLogout() {
+    if (GrokSession) {
+      await GrokSession.logout();
+      this.settings.grokCookie = '';
+      this.#cookieCache.clear();
+      this.#save();
+      this.grokIn = false;
+      app.say('Signed out of Grok');
+      return;
+    }
     if (!desk) return;
     this.grokIn = await desk.grokLogout();
     app.say('Signed out of Grok');

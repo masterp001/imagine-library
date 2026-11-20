@@ -238,7 +238,7 @@
       </div>
     </div>
 
-    {#if offline.desktop}
+    {#if offline.canLogin}
       <div class="flex flex-col gap-1">
         <span class="px-1 pb-1.5 text-sm font-medium text-on-variant">Grok account</span>
         <div class="flex items-center gap-3 rounded-3xl bg-surface-1 py-3 pr-3 pl-4">
@@ -253,8 +253,15 @@
             <button type="button" onclick={() => offline.grokLogin()} class="h-10 rounded-[20px] border-0 bg-primary px-4 text-sm font-semibold text-on-primary">Sign in</button>
           {/if}
         </div>
-        <span class="px-1 pt-1 text-xs leading-normal text-outline">Opens grok.com in a separate window. Sign in, then close that window.</span>
+        <span class="px-1 pt-1 text-xs leading-normal text-outline">
+          {offline.desktop
+            ? 'Opens grok.com in a separate window. Sign in, then close that window.'
+            : 'Opens grok.com inside the app. Sign in with e-mail or X, then tap Done. Google sign-in is often blocked in apps.'}
+        </span>
       </div>
+    {/if}
+
+    {#if offline.desktop}
 
       <div class="flex flex-col gap-1">
         <span class="px-1 pb-1.5 text-sm font-medium text-on-variant">Download folder</span>
@@ -268,10 +275,10 @@
       </div>
     {:else}
     <div class="flex flex-col gap-1">
-      <span class="flex items-center gap-1.5 px-1 pb-1.5 text-sm font-medium text-on-variant"><Icon name="cookie" size={18} />grok.com cookie (optional)</span>
+      <span class="flex items-center gap-1.5 px-1 pb-1.5 text-sm font-medium text-on-variant"><Icon name="cookie" size={18} />{offline.canLogin ? 'Cookie manually (if sign-in fails)' : 'grok.com cookie (optional)'}</span>
       <div class="flex flex-col gap-2 rounded-3xl bg-surface-1 p-4">
         <span class="text-[13px] leading-normal text-on-variant">
-          Only needed if downloads fail with HTTP 401/403. On your PC open grok.com → DevTools → Network → any request to assets.grok.com → copy the
+          {offline.canLogin ? 'Overrides the sign-in above. ' : 'Only needed if downloads fail with HTTP 401/403. '}On your PC open grok.com → DevTools → Network → any request to assets.grok.com → copy the
           <span class="font-mono text-on-surface">cookie</span> request header and paste it here. Stays on this phone; sent only to assets.grok.com.
         </span>
         <textarea

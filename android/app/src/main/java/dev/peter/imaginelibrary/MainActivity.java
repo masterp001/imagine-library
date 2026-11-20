@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // Draw behind the system bars; the web app pads itself with env(safe-area-inset-*).
         EdgeToEdge.enable(this);
+        registerPlugin(GrokSessionPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
