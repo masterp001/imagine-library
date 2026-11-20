@@ -32,6 +32,14 @@ export interface ParsedAsset {
   thumbUrl: string | null;
   thumbhash: string | null;
   rRated: boolean;
+  /**
+   * Only part of the metadata is known (official data export: no size, length,
+   * model or parent). Merging such an asset only fills gaps and never overwrites
+   * what the library already knows (e.g. real size read from a downloaded file).
+   */
+  partial?: boolean;
+  /** false: w/h are placeholders, keep the size the library already has. */
+  sizeKnown?: boolean;
 }
 
 const ASSET_HOST = 'https://assets.grok.com/';
@@ -190,8 +198,64 @@ function fromMediaPosts(posts: unknown[]): ParsedAsset[] {
       mediaUrl: dir ? dir + (video ? 'generated_video_hd.mp4' : 'image.jpg') : null,
       thumbUrl: dir && video ? dir + 'preview_image.jpg' : null,
       thumbhash: null,
-      rRated: false
+      rRated: false,
+      partial: true
     });
+  }
+  return out;
+}
+
+// ---------------- live sync: grok.com/rest/media/post/list ----------------
+const num = (v: unknown): number | null => (typeof v === 'number' && isFinite(v) && v > 0 ? v : typeof v === 'string' && /^\d+(\.\d+)?$/.test(v) ? Number(v) : null);
+
+function sizeOf(p: Obj): [number, number] | null {
+  for (const o of [p, p.resolution, p.dimensions, p.size, p.media].filter(isObj) as Obj[]) {
+    const w = num(o.width) ?? num(o.w), h = num(o.height) ?? num(o.h);
+    if (w && h) return [w, h];
+  }
+  const ar = str(p.aspectRatio) ?? str(p.aspect_ratio);
+  const m = ar?.match(/^(\d+(?:\.\d+)?)\s*[:x/]\s*(\d+(?:\.\d+)?)$/);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+/**
+ * Posts from the list endpoint behind grok.com/imagine. Each post may carry
+ * `childPosts` (edits, videos made from it), flattened here with `parent` set.
+ */
+export function fromPostList(posts: unknown, parent: Obj | null = null, out: ParsedAsset[] = []): ParsedAsset[] {
+  if (!Array.isArray(posts)) return out;
+  for (const p of posts) {
+    if (!isObj(p)) continue;
+    const id = str(p.id) ?? str(p.postId);
+    const type = String(p.mediaType ?? '') + ' ' + String(p.mimeType ?? '');
+    const video = /video/i.test(type);
+    const media = video ? (str(p.hdMediaUrl) ?? str(p.mediaUrl)) : str(p.mediaUrl);
+    if (id && media) {
+      const sz = sizeOf(p);
+      const [w, h] = sz ? reduce(Math.round(sz[0]), Math.round(sz[1])) : [1, 1];
+      const parentId = str(p.parentPostId) ?? str(p.originalPostId) ?? (parent ? str(parent.id) : null);
+      const d = num(p.duration) ?? num(p.videoDuration) ?? num(p.durationSeconds);
+      out.push({
+        id,
+        kind: video ? 'video' : 'image',
+        prompt: str(p.originalPrompt) ?? str(p.prompt) ?? (parent ? (str(parent.originalPrompt) ?? str(parent.prompt) ?? '') : ''),
+        w,
+        h,
+        createdAt: toTime(p.createTime ?? p.createdAt ?? parent?.createTime),
+        model: str(p.modelName) ?? (parent ? str(parent.modelName) : null) ?? (video ? 'imagine-video' : 'imagine-image'),
+        mode: str(p.mode) ?? null,
+        seed: null,
+        parent: parentId && parentId !== id ? parentId : null,
+        conversation: null,
+        dur: d ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}` : null,
+        mediaUrl: media.startsWith('http') ? media : ASSET_HOST + media.replace(/^\//, ''),
+        thumbUrl: str(p.thumbnailImageUrl) ?? null,
+        thumbhash: str(p.thumbhash) ?? null,
+        rRated: p.rRated === true || p.isRRated === true,
+        sizeKnown: !!sz
+      });
+    }
+    fromPostList(p.childPosts, p, out);
   }
   return out;
 }
@@ -311,13 +375,30 @@ export function mergeIntoLibrary(existing: Item[], parsed: ParsedAsset[]): { ite
       grokUrl: `https://grok.com/imagine/post/${p.id}`
     };
     const prev = byId.get(p.id);
-    if (prev) {
+    if (prev && p.partial) {
+      // Weak source: only fill what's missing, keep everything the library knows.
+      const next: Item = {
+        ...prev,
+        prompt: prev.prompt || base.prompt,
+        mediaUrl: prev.mediaUrl ?? base.mediaUrl,
+        thumbUrl: prev.thumbUrl ?? base.thumbUrl,
+        createdAt: prev.createdAt || base.createdAt
+      };
+      if (JSON.stringify(next) !== JSON.stringify(prev)) updated++;
+      byId.set(p.id, next);
+    } else if (prev) {
       const next: Item = {
         ...prev, ...base,
         createdAt: p.createdAt ?? prev.createdAt,
         prompt: base.prompt || prev.prompt,
         parent: base.parent ?? prev.parent,
         variant: base.variant ?? prev.variant,
+        dur: base.dur ?? prev.dur,
+        w: p.sizeKnown === false ? prev.w : base.w,
+        h: p.sizeKnown === false ? prev.h : base.h,
+        rRated: base.rRated || prev.rRated,
+        thumbUrl: base.thumbUrl ?? prev.thumbUrl,
+        thumbhash: base.thumbhash ?? prev.thumbhash,
         hue: prev.hue,
         grokUrl: prev.grokUrl
       };

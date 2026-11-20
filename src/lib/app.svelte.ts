@@ -1,7 +1,7 @@
 import { smartGroups } from './cluster';
 import * as db from './db';
 import { DEMO_COLLS, demoItems } from './demo';
-import { mergeIntoLibrary, parseText } from './importer';
+import { mergeIntoLibrary, parseText, type ParsedAsset } from './importer';
 import type { Collection, Filter, ImportRecord, Item, Persisted, Scope, Screen, Settings, SmartGroup } from './types';
 
 interface Frame {
@@ -292,6 +292,20 @@ class App {
   }
 
   // ================= import =================
+  /** Merge parsed assets into the library (import and live sync). */
+  mergeParsed(parsed: ParsedAsset[], source: string) {
+    const base = this.demo ? [] : ($state.snapshot(this.items) as Item[]);
+    if (this.demo) {
+      this.colls = [];
+      this.demo = false;
+    }
+    const { items, added, updated } = mergeIntoLibrary(base, parsed);
+    this.items = items;
+    this.lastImport = Date.now();
+    this.history = [{ at: this.lastImport, added, updated, source }, ...this.history].slice(0, 20);
+    return { added, updated };
+  }
+
   async importText(text: string, source: string) {
     if (this.importing) return;
     this.importing = true;
@@ -307,18 +321,7 @@ class App {
       this.importPct = 70;
       this.importLine = `Merging ${parsed.length.toLocaleString('en-US')} assets…`;
       await tick();
-      const base = this.demo ? [] : $state.snapshot(this.items) as Item[];
-      if (this.demo) {
-        this.colls = [];
-        this.demo = false;
-      }
-      const { items, added, updated } = mergeIntoLibrary(base, parsed);
-      this.items = items;
-      this.importPct = 95;
-      this.importLine = 'Regrouping by prompt similarity…';
-      await tick();
-      this.lastImport = Date.now();
-      this.history = [{ at: this.lastImport, added, updated, source }, ...this.history].slice(0, 20);
+      const { added, updated } = this.mergeParsed(parsed, source);
       this.importPct = 100;
       this.say(`Imported · ${added} new, ${updated} updated`);
     } catch (e) {

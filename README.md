@@ -64,6 +64,22 @@ columns, detail view with media left and info right, arrow keys / Esc.
 - Code: `electron/main.ts` (window, `app://` protocol with Range support, downloads,
   dialogs), `electron/preload.ts` (bridge), `src/lib/desktop.ts` (types).
 
+## Live sync (Android + desktop)
+Import tab → **Live sync with Grok**. After signing in (Offline tab or the button on the
+card) the app reads the same list grok.com/imagine loads — `POST /rest/media/post/list`
+`{ limit, filter: { source }, cursor }` → `{ posts[…childPosts], nextCursor }` — from a
+hidden grok.com page, so requests carry your session like the website's own.
+- **Sync now** is incremental: newest first, stops after two pages with nothing new.
+  **Full sync** walks everything and refreshes sizes, models and image→video links.
+- Which `source` covers the whole library is undocumented; the app probes a few values
+  and keeps the one returning the newest posts (re-checked weekly). *Liked* limits it to
+  liked/saved posts.
+- Optional quiet sync on app start (at most every 30 min). New items are downloaded
+  automatically if *Download automatically* is on.
+- Unofficial endpoint: it can change without notice. The data export import stays as a
+  fallback. Re-importing an export never overwrites better data (size, length, model,
+  links) the library already has.
+
 ## Official xAI export
 The account export from grok.com (Settings → Data → *Download your data*, file
 `prod-grok-backend.json`) is imported directly: every entry of `media_posts`

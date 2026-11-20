@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('imagineDesktop', {
   chooseFolder: () => ipcRenderer.invoke('lib:choose'),
   exportFiles: (files: { rel: string; name: string }[], folder: string) => ipcRenderer.invoke('lib:export', files, folder),
   grokStatus: () => ipcRenderer.invoke('grok:status'),
+  grokApi: (path: string, body: string, reload?: boolean) => ipcRenderer.invoke('grok:api', path, body, reload),
   grokLogin: () => ipcRenderer.invoke('grok:login'),
   grokLogout: () => ipcRenderer.invoke('grok:logout'),
   onProgress: (cb: (p: { url: string; got: number; total: number }) => void) => {

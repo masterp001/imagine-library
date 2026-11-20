@@ -12,6 +12,7 @@
   import Library from './lib/screens/Library.svelte';
   import Offline from './lib/screens/Offline.svelte';
   import { offline } from './lib/offline.svelte';
+  import { sync } from './lib/sync.svelte';
   import Search from './lib/screens/Search.svelte';
   import Sync from './lib/screens/Sync.svelte';
   import type { Screen } from './lib/types';
@@ -20,6 +21,7 @@
     await app.init();
     await offline.init();
     if (offline.settings.auto) offline.start();
+    sync.autoStart();
   });
 
   // Persist any change (debounced inside scheduleSave).

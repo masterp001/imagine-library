@@ -4,6 +4,9 @@
   import Toggle from '../components/Toggle.svelte';
   import { ago, dateTime, num } from '../format';
   import { offline } from '../offline.svelte';
+  import { sync } from '../sync.svelte';
+
+  sync.init();
 
   let fileInput = $state<HTMLInputElement>();
   let confirmClear = $state(false);
@@ -47,6 +50,74 @@
     <h1 class="m-0 text-[30px] font-semibold tracking-[-0.02em]">Import</h1>
   </div>
   <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-[calc(120px+env(safe-area-inset-bottom))] lg:pb-12">
+    {#if sync.available}
+      <div class="flex flex-col gap-4 rounded-[28px] bg-surface-3 p-5">
+        <div class="flex items-center gap-3.5">
+          <div class="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+            <span class={sync.running ? 'animate-spin' : ''}><Icon name="sync" size={26} /></span>
+          </div>
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-[17px] font-semibold">Live sync with Grok</span>
+            <span class="truncate text-[13px] text-on-variant">
+              {#if sync.running}
+                {sync.note}
+              {:else if !offline.grokIn}
+                Sign in to Grok to fetch new creations directly
+              {:else if sync.settings.lastSync}
+                Last sync {ago(sync.settings.lastSync)} · {sync.settings.lastAdded} new
+              {:else}
+                Fetches new creations straight from grok.com
+              {/if}
+            </span>
+          </div>
+        </div>
+        {#if sync.note && !sync.running}
+          <div class="text-[13px] leading-normal text-fav">{sync.note}</div>
+        {/if}
+        <div class="flex gap-2">
+          {#if !offline.grokIn}
+            <button type="button" onclick={() => offline.grokLogin()} class="flex h-12 flex-1 items-center justify-center gap-2 rounded-3xl border-0 bg-primary text-[15px] font-semibold text-on-primary">
+              <Icon name="cookie" size={20} /><span>Sign in to Grok</span>
+            </button>
+          {:else if sync.running}
+            <button type="button" onclick={() => sync.stop()} class="flex h-12 flex-1 items-center justify-center gap-2 rounded-3xl border border-outline bg-transparent text-[15px] font-semibold text-on-variant">
+              <Icon name="stop" size={20} /><span>Stop</span>
+            </button>
+          {:else}
+            <button type="button" onclick={() => sync.run(false)} class="flex h-12 flex-1 items-center justify-center gap-2 rounded-3xl border-0 bg-primary text-[15px] font-semibold text-on-primary">
+              <Icon name="sync" size={20} /><span>Sync now</span>
+            </button>
+            <button type="button" onclick={() => sync.run(true)} title="Walk the whole list and refresh sizes, models and links" class="flex h-12 items-center justify-center gap-1.5 rounded-3xl border border-outline bg-transparent px-4 text-sm font-semibold text-primary">
+              <span>Full sync</span>
+            </button>
+          {/if}
+        </div>
+        <div class="flex flex-col">
+          <div class="-mx-4">
+            <Toggle label="Sync when the app opens" sub="Quietly, at most every 30 minutes" on={sync.settings.onStart} onchange={(v) => ((sync.settings.onStart = v), sync.save())} />
+          </div>
+          <div class="flex items-center gap-4 py-3">
+            <span class="flex flex-1 flex-col gap-0.5">
+              <span class="text-[15px]">What to sync</span>
+              <span class="text-[13px] text-outline">Source: {sync.sourceLabel}</span>
+            </span>
+            <div class="flex overflow-hidden rounded-[18px] border border-outline">
+              {#each [['auto', 'All'], ['liked', 'Liked']] as [v, l] (v)}
+                <button
+                  type="button"
+                  onclick={() => ((sync.settings.mode = v as 'auto' | 'liked'), sync.resetSource())}
+                  class="h-9 w-14 border-0 text-sm font-medium"
+                  style:background={sync.settings.mode === v ? 'var(--color-secondary-container)' : 'transparent'}
+                  style:color={sync.settings.mode === v ? 'var(--color-on-secondary-container)' : 'var(--color-on-variant)'}
+                >{l}</button>
+              {/each}
+            </div>
+          </div>
+        </div>
+        <span class="text-xs leading-normal text-outline">Uses the same list grok.com/imagine loads, with your sign-in. It's not an official API and may change. The data export still works as a fallback.</span>
+      </div>
+    {/if}
+
     <div class="flex flex-col gap-4 rounded-[28px] bg-surface-3 p-5">
       <div class="flex items-center gap-3.5">
         <div class="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-primary-container text-on-primary-container">

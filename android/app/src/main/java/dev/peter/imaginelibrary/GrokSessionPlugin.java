@@ -4,10 +4,13 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -24,7 +27,13 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import org.json.JSONObject;
 
 /**
  * Grok sign-in inside the app.
@@ -33,6 +42,8 @@ import java.util.regex.Pattern;
  *             every WebView in the app, so the session stays available afterwards.
  * getCookie() returns the Cookie header for a URL (including HttpOnly cookies, which the
  *             web layer can't read) so native downloads from assets.grok.com can send it.
+ * api()       POSTs to a grok.com /rest/ endpoint from inside a hidden grok.com page, so the
+ *             request carries the session exactly like the website's own requests.
  */
 @CapacitorPlugin(name = "GrokSession")
 public class GrokSessionPlugin extends Plugin {
@@ -81,6 +92,81 @@ public class GrokSessionPlugin extends Plugin {
                 call.resolve(state());
             });
         });
+    }
+
+    // ---------------- api() via a hidden grok.com page ----------------
+    private WebView apiView;
+    private boolean apiReady = false;
+    private final List<Runnable> apiQueue = new ArrayList<>();
+    private final Map<String, PluginCall> apiCalls = new ConcurrentHashMap<>();
+    private final Handler main = new Handler(Looper.getMainLooper());
+
+    private class Bridge {
+        @JavascriptInterface
+        public void done(String id, int status, String text) {
+            PluginCall c = apiCalls.remove(id);
+            if (c == null) return;
+            JSObject r = new JSObject();
+            r.put("status", status);
+            r.put("text", text);
+            c.resolve(r);
+        }
+    }
+
+    private void loadApiPage(boolean full) {
+        apiReady = false;
+        // robots.txt is a tiny same-origin document; the full app page clears any challenge.
+        apiView.loadUrl(full ? "https://grok.com/imagine" : "https://grok.com/robots.txt");
+    }
+
+    private void ensureApiView() {
+        if (apiView != null) return;
+        apiView = new WebView(getContext());
+        WebSettings s = apiView.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setUserAgentString(userAgent());
+        CookieManager.getInstance().setAcceptThirdPartyCookies(apiView, true);
+        apiView.addJavascriptInterface(new Bridge(), "ImagineBridge");
+        apiView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (apiReady) return;
+                apiReady = true;
+                List<Runnable> q = new ArrayList<>(apiQueue);
+                apiQueue.clear();
+                for (Runnable r : q) r.run();
+            }
+        });
+        loadApiPage(false);
+    }
+
+    @PluginMethod
+    public void api(PluginCall call) {
+        String path = call.getString("path", "");
+        String body = call.getString("body", "{}");
+        boolean reload = Boolean.TRUE.equals(call.getBoolean("reload", false));
+        if (!path.startsWith("/rest/")) {
+            call.reject("Only grok.com /rest/ paths are allowed");
+            return;
+        }
+        String id = UUID.randomUUID().toString();
+        apiCalls.put(id, call);
+        main.post(() -> {
+            ensureApiView();
+            if (reload) loadApiPage(true);
+            String js = "(async()=>{try{const r=await fetch(" + JSONObject.quote(path)
+                + ",{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:"
+                + JSONObject.quote(body) + "});ImagineBridge.done(" + JSONObject.quote(id)
+                + ",r.status,await r.text())}catch(e){ImagineBridge.done(" + JSONObject.quote(id) + ",0,String(e))}})()";
+            Runnable run = () -> apiView.evaluateJavascript(js, null);
+            if (apiReady) run.run();
+            else apiQueue.add(run);
+        });
+        main.postDelayed(() -> {
+            PluginCall c = apiCalls.remove(id);
+            if (c != null) c.reject("Timed out talking to grok.com");
+        }, 90_000);
     }
 
     @PluginMethod

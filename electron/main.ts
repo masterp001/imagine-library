@@ -156,6 +156,21 @@ function openLogin(parent: BrowserWindow): Promise<boolean> {
   });
 }
 
+// ---------------- grok.com API (hidden page) ----------------
+let apiWin: BrowserWindow | null = null;
+let apiLoad: Promise<unknown> | null = null;
+
+/** A hidden grok.com document; requests from it carry the session like the site's own. */
+async function apiWindow(full: boolean): Promise<BrowserWindow> {
+  if (!apiWin || apiWin.isDestroyed()) {
+    apiWin = new BrowserWindow({ show: false, webPreferences: { partition: 'persist:grok', contextIsolation: true, sandbox: true } });
+    apiLoad = null;
+  }
+  if (!apiLoad || full) apiLoad = apiWin.loadURL(full ? `${GROK}imagine` : `${GROK}robots.txt`, { userAgent: chromeUA() }).catch(() => {});
+  await apiLoad;
+  return apiWin;
+}
+
 // ---------------- main window ----------------
 let win: BrowserWindow | null = null;
 
@@ -202,7 +217,11 @@ function createWindow() {
     remember();
     void saveCfg();
   });
-  win.on('closed', () => (win = null));
+  win.on('closed', () => {
+    win = null;
+    apiWin?.destroy();
+    loginWin?.destroy();
+  });
 
   win.loadURL(`${ORIGIN}/index.html`);
 }
@@ -340,6 +359,12 @@ function registerIpc() {
     return { count, dest };
   });
 
+  handle('grok:api', async (_e, p: string, body: string, reload?: boolean) => {
+    if (!/^\/rest\//.test(p)) throw new Error('Only grok.com /rest/ paths are allowed');
+    const w = await apiWindow(!!reload);
+    const code = `(async()=>{try{const r=await fetch(${JSON.stringify(p)},{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:${JSON.stringify(body)}});return {status:r.status,text:await r.text()}}catch(e){return {status:0,text:String(e)}}})()`;
+    return (await w.webContents.executeJavaScript(code, true)) as { status: number; text: string };
+  });
   handle('grok:status', () => grokSignedIn());
   handle('grok:login', () => openLogin(win!));
   handle('grok:logout', async () => {
